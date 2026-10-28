@@ -25,7 +25,75 @@ It is open source, works on macOS, Linux and Windows, and needs no server, no MD
 
 You do this once per machine. After that it works for every project you open.
 
+On Windows, `~` in this guide means your profile folder `%USERPROFILE%` (for example `C:\Users\you`). So `~/.copilot/hooks` is `C:\Users\you\.copilot\hooks`. The `skillseal` commands are the same in PowerShell, cmd and bash. Where a step is different on Windows, a PowerShell version is shown.
+
 ### Step 1: Install skillseal
+
+Pick one option. **You do not need Python** for options A and B.
+
+| Your machine | Use |
+| --- | --- |
+| Windows | [A. Windows, no Python](#a-windows-no-python-no-admin-rights) |
+| macOS (Apple silicon) or Linux x64, no Python | [B. macOS or Linux, no Python](#b-macos-or-linux-no-python) |
+| Any machine with Python 3.10+ | [C. With Python](#c-with-python) |
+
+#### A. Windows, no Python, no admin rights
+
+Open **PowerShell** (not as administrator) and run:
+
+```powershell
+irm https://raw.githubusercontent.com/azurekid/skillseal/main/install.ps1 | iex
+```
+
+The script downloads `skillseal-windows-x64.zip` from the [latest release](https://github.com/azurekid/skillseal/releases/latest), checks its SHA256 checksum, unpacks it to `%LOCALAPPDATA%\Programs\skillseal` and adds that folder to **your user** `PATH`. Nothing is installed for other users and no admin rights are needed. Open a new terminal and check:
+
+```powershell
+skillseal --version
+```
+
+Not allowed to run scripts from the internet? Do the same steps by hand:
+
+1. Download `skillseal-windows-x64.zip` and `SHA256SUMS.txt` from the [releases page](https://github.com/azurekid/skillseal/releases/latest).
+2. Check the hash. The output must match the line for the zip in `SHA256SUMS.txt`:
+   ```powershell
+   (Get-FileHash .\skillseal-windows-x64.zip -Algorithm SHA256).Hash
+   ```
+3. Unpack the zip. Move the `skillseal` folder to `%LOCALAPPDATA%\Programs\skillseal`.
+4. Add that folder to your PATH: start menu, search **"Edit environment variables for your account"**, select `Path`, **Edit**, **New**, paste `%LOCALAPPDATA%\Programs\skillseal`, **OK**. This is a per-user setting and needs no admin rights.
+5. Open a new terminal and run `skillseal --version`.
+
+Or, when you have the zip already (for example on an offline machine), run the script from a copy of this repository: `.\install.ps1 -ZipPath .\skillseal-windows-x64.zip`.
+
+Good to know on Windows:
+
+* The x64 build also runs on Windows 11 on Arm (through x64 emulation).
+* `skillseal.exe` is not signed with an Authenticode certificate. On most machines that is no problem when you start it from a terminal. If your company blocks unsigned programs (Smart App Control, AppLocker or WDAC), ask IT to allow it, for example by file hash or by folder, or use option C.
+* Each release has [build provenance](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations): GitHub can prove that the zip was built from this repository by the release workflow. With the [GitHub CLI](https://cli.github.com) installed: `gh attestation verify skillseal-windows-x64.zip --repo azurekid/skillseal`.
+* Update: run the same install command again. Close your AI agents first, because they use `skillseal.exe`.
+
+#### B. macOS or Linux, no Python
+
+Download and unpack the build for your machine to `~/.local/share/skillseal`, and link it into `~/.local/bin`:
+
+```bash
+# macOS (Apple silicon):
+asset=skillseal-macos-arm64.tar.gz
+# Linux x64:
+# asset=skillseal-linux-x64.tar.gz
+
+cd "$(mktemp -d)"
+curl -fsSLO "https://github.com/azurekid/skillseal/releases/latest/download/$asset"
+curl -fsSLO "https://github.com/azurekid/skillseal/releases/latest/download/SHA256SUMS.txt"
+grep " $asset\$" SHA256SUMS.txt | shasum -a 256 -c -   # must print OK (Linux without perl: sha256sum -c -)
+mkdir -p ~/.local/share ~/.local/bin
+rm -rf ~/.local/share/skillseal && tar -xzf "$asset" -C ~/.local/share
+ln -sf ~/.local/share/skillseal/skillseal ~/.local/bin/skillseal
+skillseal --version
+```
+
+If `skillseal` is not found, add `~/.local/bin` to your `PATH`. On macOS, files downloaded with `curl` are not quarantined, so Gatekeeper does not stop them. The Linux build needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12, RHEL 10 and later). Intel Macs and other systems: use option C.
+
+#### C. With Python
 
 You need Python 3.10 or newer. Install with [pipx](https://pipx.pypa.io) or [uv](https://docs.astral.sh/uv/):
 
@@ -35,21 +103,14 @@ pipx install git+https://github.com/azurekid/skillseal
 uv tool install git+https://github.com/azurekid/skillseal
 ```
 
-Check that it works:
-
-```bash
-skillseal --version
-```
-
-If the command is not found, run `pipx ensurepath` (or `uv tool update-shell`) and open a new terminal.
+Check that it works with `skillseal --version`. If the command is not found, run `pipx ensurepath` (or `uv tool update-shell`) and open a new terminal.
 
 ### Step 2: Tell skillseal whom to trust
 
 Your team lead gives you the name of the approval workflow (see [Part 3](#part-3-for-the-team-lead-approve-skills)). Run:
 
 ```bash
-skillseal init --mode audit \
-  --github-workflow YOUR-ORG/agent-skills/.github/workflows/approve-skills.yml@refs/heads/main
+skillseal init --mode audit --github-workflow YOUR-ORG/agent-skills/.github/workflows/approve-skills.yml@refs/heads/main
 ```
 
 This writes your trust policy to `~/.config/skillseal/policy.json` (on Windows: `%USERPROFILE%\.config\skillseal\policy.json`). We start in **audit** mode: nothing is blocked yet, problems are only written to a log. You switch to blocking in step 5.
@@ -63,6 +124,15 @@ skillseal init --force --mode audit \
   --certificate-chain "$PWD/nv-agent-root-cert.pem"
 ```
 
+In PowerShell:
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/NVIDIA/skills/main/nv-agent-root-cert.pem -OutFile nv-agent-root-cert.pem
+skillseal init --force --mode audit `
+  --github-workflow YOUR-ORG/agent-skills/.github/workflows/approve-skills.yml@refs/heads/main `
+  --certificate-chain "$PWD\nv-agent-root-cert.pem"
+```
+
 Did your team lead give you a ready `policy.json` file instead? Just copy it to the path above.
 
 ### Step 3: See what your agents can load today
@@ -70,7 +140,7 @@ Did your team lead give you a ready `policy.json` file instead? Just copy it to 
 Go to a project you work on and run:
 
 ```bash
-cd ~/code/my-project
+cd ~/code/my-project        # PowerShell: cd $HOME\code\my-project
 skillseal check
 ```
 
@@ -92,7 +162,17 @@ Clean up every `[FAIL]` line before you go to enforce mode. For each one, either
 
 Pick the tools you use below. Always use `--scope user`: then the guard is active for **every** project on this machine, including repositories you just cloned. (A project install only lives inside one repository, and a malicious repository will not bring it.)
 
-`skillseal install` merges into the existing config. Your own hooks and settings stay. Running it twice does not add things twice. It writes the full path of `skillseal` into the hook, so it also works when the agent is started from a desktop icon without your shell `PATH`.
+`skillseal install` merges into the existing config. Your own hooks and settings stay. Running it twice does not add things twice. It writes the full path of `skillseal` into the hook, so it also works when the agent is started from a desktop icon without your shell `PATH`. If you move or reinstall skillseal in another folder later, run the install command again.
+
+On Windows, each agent runs hooks with a different shell. skillseal writes the command in the right form for each one, so you do not need Git Bash or WSL:
+
+| Agent | Runs hooks on Windows with | What skillseal writes |
+| --- | --- | --- |
+| Copilot (CLI and VS Code) | PowerShell | `& 'C:\...\skillseal.exe' hook copilot preToolUse; if (-not $?) { exit 2 }` |
+| Claude Code | no shell (exec form) | `"command": "C:\\...\\skillseal.exe", "args": ["hook", "claude", "PreToolUse"]` |
+| Codex CLI | `cmd.exe` | `"C:\...\skillseal.exe" hook codex PreToolUse \|\| exit 2` |
+| Gemini CLI | PowerShell (`pwsh`, or Windows PowerShell 5.1) | `& 'C:\...\skillseal.exe' hook gemini BeforeTool; if (-not $?) { exit 2 }` |
+| OpenCode | no shell (the plugin starts `skillseal.exe` directly) | path in `skillseal.js` |
 
 #### VS Code
 
@@ -143,6 +223,8 @@ This adds hooks to `~/.claude/settings.json` for `SessionStart`, `UserPromptSubm
 
 Note: in `claude -p` (headless) runs Claude Code treats the folder as trusted, so the hooks run directly.
 
+Use Claude Code 2.1.295 or later. The blocking hooks set `"onFailure": "block"`, so a crash or a timeout of the hook also blocks; older versions ignore that setting. On Windows the hooks start `skillseal.exe` directly (exec form), so it does not matter if Claude Code uses Git Bash or PowerShell.
+
 #### Codex CLI
 
 ```bash
@@ -188,27 +270,43 @@ skillseal install copilot claude codex gemini opencode --scope user
 3. Open `~/.config/skillseal/policy.json` and change `"mode": "audit"` to `"mode": "warn"`. Now the agent shows the problem but still continues.
 4. When that is quiet too, change it to `"mode": "enforce"`. Now the agent is blocked.
 
-Quick test that blocking works (in enforce mode):
+Quick test that blocking works (in enforce mode). `.agents/skills` is read by Copilot, Codex, Gemini and OpenCode; for Claude Code use `.claude/skills`:
 
 ```bash
-mkdir -p ~/code/my-project/.claude/skills/test-unsigned
-echo "# test" > ~/code/my-project/.claude/skills/test-unsigned/SKILL.md
+mkdir -p ~/code/my-project/.agents/skills/test-unsigned
+echo "# test" > ~/code/my-project/.agents/skills/test-unsigned/SKILL.md
 ```
 
-Ask your agent to run any command, like `list the files in this folder`. It should refuse with a skillseal message. Then remove the test folder:
+In PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force "$HOME\code\my-project\.agents\skills\test-unsigned" | Out-Null
+Set-Content "$HOME\code\my-project\.agents\skills\test-unsigned\SKILL.md" "# test"
+```
+
+Ask your agent to run any command, like `list the files in this folder`. It should refuse with a skillseal message. Then remove the test folder (PowerShell: `Remove-Item -Recurse -Force <folder>`):
 
 ```bash
-rm -rf ~/code/my-project/.claude/skills/test-unsigned
+rm -rf ~/code/my-project/.agents/skills/test-unsigned
 ```
 
 ### Remove skillseal again
 
+First remove the hooks. `uninstall` only removes the skillseal entries; your other hooks and settings stay:
+
 ```bash
 skillseal uninstall copilot claude codex gemini opencode --scope user
-pipx uninstall skillseal     # or: uv tool uninstall skillseal
 ```
 
-`uninstall` only removes the skillseal entries. Your other hooks and settings stay.
+Then remove the program:
+
+| Installed with | Remove with |
+| --- | --- |
+| A. Windows | `Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Programs\skillseal"`, then remove that folder from your user `Path` ("Edit environment variables for your account") |
+| B. macOS or Linux | `rm -rf ~/.local/share/skillseal ~/.local/bin/skillseal` |
+| C. Python | `pipx uninstall skillseal` or `uv tool uninstall skillseal` |
+
+Your policy (`~/.config/skillseal`) and cache (`~/.cache/skillseal`) stay. Delete those folders too if you want.
 
 ---
 
@@ -244,6 +342,10 @@ Other problems:
 | Hook does not run in Codex | Approve the hook in `/hooks`. |
 | Hook does not run in OpenCode | Restart OpenCode. The plugin is only loaded at startup. |
 | `skillseal: command not found` inside the agent | Run `skillseal install ... --scope user` again from a shell where `skillseal --version` works, or pass `--exe /full/path/to/skillseal`. |
+| Windows: `skillseal` is not recognized | Open a **new** terminal after the install (PATH changes only apply to new windows). Check that `%LOCALAPPDATA%\Programs\skillseal` is in your user `Path`. |
+| Windows: "This app has been blocked" or "Access is denied" when starting `skillseal.exe` | Your device blocks unsigned programs. Ask IT to allow `skillseal.exe`, or install with Python (option C). |
+| Windows: install script says "Cannot replace ..." | An agent is still running `skillseal.exe`. Close VS Code and your agents, then run it again. |
+| Windows: `irm ... \| iex` is blocked | Use the manual steps in [option A](#a-windows-no-python-no-admin-rights). |
 | You must work right now and cannot wait for approval | Set `"mode": "warn"` in your policy for a moment. Do not forget to set it back. |
 
 ---
@@ -375,7 +477,9 @@ skillseal uses the [OpenSSF Model Signing (OMS)](https://github.com/sigstore/mod
 | OpenCode | `~/.config/opencode/plugins/skillseal.js` | `.opencode/plugins/skillseal.js` | `tool.execute.before` (plugin throws) |
 | OpenClaw (experimental) | `~/.openclaw/policies/skillseal-guard.ts` | same | `before_tool_call` |
 
-Blocking hooks are written as `skillseal hook ... || exit 2` (PowerShell: `if (-not $?) { exit 2 }`), and the OpenCode plugin throws on any error. So when skillseal crashes or is missing, the agent is blocked too (fail closed). For Copilot and Claude a `SessionStart` hook also tells the agent why tools are blocked.
+Blocking hooks are written as `skillseal hook ... || exit 2` for `sh` and `cmd.exe`, and as `& 'skillseal' hook ...; if (-not $?) { exit 2 }` for PowerShell (see the [Windows table](#step-4-connect-skillseal-to-your-agent)). Claude Code hooks also set `"onFailure": "block"`, and on Windows they use exec form. The OpenCode plugin throws on any error. So when skillseal crashes or is missing, the agent is blocked too (fail closed). For Copilot and Claude a `SessionStart` hook also tells the agent why tools are blocked.
+
+The [test suite](tests/test_hooks_install.py) runs the written hook commands in the real shells (`sh` on macOS and Linux; `cmd.exe`, Windows PowerShell 5.1, `pwsh` and exec form on Windows) for an unsigned skill, a signed skill and a missing binary.
 
 Skills that an agent puts in the prompt without a tool call are covered by the same rule: while any loadable skill fails, the agent cannot use tools.
 
@@ -446,6 +550,7 @@ skillseal raises the bar a lot, but it is not a sandbox:
 
 * **A user who controls their machine can remove the hooks.** skillseal protects people and teams against poisoned skills, not against themselves. See [Hooks that users cannot switch off](#hooks-that-users-cannot-switch-off).
 * **Malicious repositories do not bring the guard.** That is why you install with `--scope user`.
+* **Standalone builds** are made with PyInstaller for Windows x64, macOS arm64 and Linux x64 (glibc 2.35+). They are not Authenticode or Apple Developer ID signed; integrity comes from the SHA256 checksums and GitHub build provenance.
 * **Copilot hook timeouts fail open** (documented by GitHub). The check is cached and the timeout is 60 seconds, but a hook that hangs lets the call through.
 * **Gemini CLI treats exit code 1 as a warning.** skillseal never uses exit 1 to block there; it returns `{"decision":"deny"}`.
 * **File permissions are not signed.** OMS hashes file content, not the executable bit.
@@ -493,6 +598,14 @@ python -m venv .venv && .venv/bin/pip install -e ".[test]"
 ```
 
 CI runs the tests on Linux, macOS and Windows, plus a real Sigstore keyless sign and verify round trip through the action.
+
+Build the standalone binary (into `dist/skillseal/`):
+
+```bash
+./packaging/build.sh
+```
+
+A tag `v*` runs the [release workflow](.github/workflows/release.yml): it builds the binaries on Windows, Linux and macOS, tests each one (key and Sigstore signing, tamper detection, and on Windows `install.ps1` plus a hook in PowerShell 5.1), and publishes them with `SHA256SUMS.txt` and build provenance.
 
 ## License
 

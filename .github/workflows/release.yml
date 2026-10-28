@@ -69,8 +69,13 @@ jobs:
           $payload = '{"cwd": "' + ($proj -replace '\\','\\') + '"}'
           $gemini = (Get-Content "$env:USERPROFILE\.gemini\settings.json" -Raw | ConvertFrom-Json).hooks.BeforeTool[0].hooks[0].command
           if ($gemini -notlike "*app dir*") { throw "hook does not use the frozen exe path: $gemini" }
-          $out = $payload | powershell.exe -NoProfile -NonInteractive -Command "$gemini; if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }"
-          if ($LASTEXITCODE -ne 0 -or ($out | ConvertFrom-Json).decision -ne "deny") { throw "gemini hook did not deny: $LASTEXITCODE $out" }
+          # Like Gemini CLI: real stdin redirect, started from another folder, so the project is only known from stdin.
+          [IO.File]::WriteAllText("$env:RUNNER_TEMP\in.json", $payload)
+          $p = Start-Process powershell.exe -NoNewWindow -Wait -PassThru -WorkingDirectory $env:RUNNER_TEMP `
+            -RedirectStandardInput "$env:RUNNER_TEMP\in.json" -RedirectStandardOutput "$env:RUNNER_TEMP\out.txt" `
+            -ArgumentList "-NoProfile -NonInteractive -Command `"$gemini; if (`$LASTEXITCODE -ne 0) { exit `$LASTEXITCODE }`""
+          $out = Get-Content "$env:RUNNER_TEMP\out.txt" -Raw
+          if ($p.ExitCode -ne 0 -or ($out | ConvertFrom-Json).decision -ne "deny") { throw "gemini hook did not deny: $($p.ExitCode) $out" }
           $codex = (Get-Content "$env:USERPROFILE\.codex\hooks.json" -Raw | ConvertFrom-Json).hooks.PreToolUse[0].hooks[0].command
           if ($codex -notlike '"*app dir*skillseal.exe" hook codex PreToolUse || exit 2') { throw "unexpected codex hook: $codex" }
           Write-Host "Windows hooks OK"

@@ -295,11 +295,15 @@ def test_installed_hook_commands_run_in_real_shells(project, keys, tmp_path, age
     paths, _ = install(agent, "project", project, exe=exe, windows=windows)
     blocking = {"claude": "PreToolUse", "codex": "PreToolUse", "gemini": "BeforeTool", "copilot": "preToolUse"}[agent]
     payload = json.dumps({"cwd": str(project), "tool_name": "Bash", "toolName": "bash"})
+    # Run from another folder: the project is only known from stdin, so a shell
+    # that does not pass stdin on to skillseal makes this test fail.
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
     ran = 0
     for event, how in _hook_commands(paths, agent, windows):
         if event != blocking:
             continue
-        r = _run(how, payload, project, shell_exe)
+        r = _run(how, payload, elsewhere, shell_exe)
         ran += 1
         out = r.stdout + r.stderr
         if state == "signed":
