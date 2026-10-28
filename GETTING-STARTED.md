@@ -109,13 +109,47 @@ Choose one route: create a policy with your team's approval workflow, or copy a 
 
 #### Create a policy
 
-Replace `YOUR-ORG/agent-skills` with your team's repository and use the exact workflow file and branch your team gives you:
+The value uses this format:
+
+```text
+OWNER/REPOSITORY/.github/workflows/WORKFLOW-FILE.yml@refs/heads/BRANCH
+```
+
+| Part | Meaning | Example |
+| --- | --- | --- |
+| `OWNER` | GitHub organization **or personal account** that owns the signing repository | `azurekid` |
+| `REPOSITORY` | Repository where the approval workflow runs | `agent-skills` |
+| `WORKFLOW-FILE.yml` | Exact approval workflow filename | `approve-skills.yml` |
+| `BRANCH` | Branch where that workflow signs skills | `main` |
+
+`YOUR-ORG/agent-skills` below is a placeholder for `OWNER/REPOSITORY`, not a required repository name. Replace it with the repository that **signs** your skills, and use the workflow filename and branch your team gives you:
 
 ```bash
 skillseal init --mode audit --github-workflow YOUR-ORG/agent-skills/.github/workflows/approve-skills.yml@refs/heads/main
 ```
 
-By default, this writes your trust policy here:
+For example, **if you set up** that workflow in `azurekid/agent-skills` on `main`, the command is:
+
+```bash
+skillseal init --mode audit --github-workflow azurekid/agent-skills/.github/workflows/approve-skills.yml@refs/heads/main
+```
+
+This command trusts signatures from that exact workflow identity. It does **not** create a repository or workflow, download skills, scan files or sign anything. Your team must set up [approval and signing](APPROVAL.md) separately.
+
+#### Do I need this for every repository with skills?
+
+**No. Configure the trusted signer once per developer user on each machine, not once per project.** With user-scope agent hooks installed in step 4, the same policy is used across projects.
+
+* **One central approval workflow:** trust it once. Skills it signs can be copied into many repositories or user skill folders without another trust entry. Copy the complete signed folder, including `skill.oms.sig`, without changing its files.
+* **Different repositories sign their own skills:** each distinct signing workflow identity you want to trust needs its own entry in `trusted_signers`. This is a policy update, not another installation in every project.
+* **A repository only contains copies of signed skills:** no additional signer entry is needed. The signature's signer matters, not the repository you copied the skill from.
+* **A skill has no signature:** naming its repository in the policy does not approve it. It must first be signed by a trusted signer.
+
+For example, a skill signed in `azurekid/agent-skills` can be used in both `azurekid/app-one` and `azurekid/app-two` with the same trust entry. Those applications do not need their own approval workflows unless you choose to sign skills there.
+
+For several independent signers, use the [multiple-workflow policy example](APPROVAL.md#trusting-more-than-one-signing-workflow). Do not run `init --force` once per repository: it replaces the policy rather than appending a signer.
+
+The `skillseal init` command writes your user trust policy to the following default location:
 
 | Machine | Policy file |
 | --- | --- |

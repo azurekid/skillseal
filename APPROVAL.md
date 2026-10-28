@@ -6,6 +6,8 @@
 
 Make one repository (for example `YOUR-ORG/agent-skills`) with one folder per skill:
 
+Here `YOUR-ORG` means the GitHub owner, either an organization or a personal account. `agent-skills` is an example repository name, not a required name. For example, `azurekid/agent-skills` means owner `azurekid`, repository `agent-skills`.
+
 ```text
 skills/
   deploy/
@@ -65,6 +67,37 @@ skillseal init --github-workflow YOUR-ORG/agent-skills/.github/workflows/approve
 ```
 
 Or share the resulting `~/.config/skillseal/policy.json` file. It is small and contains no secrets, so you can put it in dotfiles, a devcontainer, an onboarding script or a base image. Developers copy it to their own user policy location using the [copy instructions](GETTING-STARTED.md#use-a-policy-your-team-gave-you). Include any public key or certificate files it references. Do not distribute your own machine's absolute paths to those files.
+
+#### Trusting more than one signing workflow
+
+Trust follows the **signing workflow**, not the repository where a developer uses a skill. One central approval workflow can sign skills for many projects. Developers need only one trust entry for that identity.
+
+If different repositories run their own approval workflows, add each trusted identity to the **same user policy**. For example:
+
+```json
+{
+  "mode": "audit",
+  "allow_repo_signers": false,
+  "trusted_signers": [
+    {
+      "name": "central skills approval",
+      "type": "sigstore",
+      "identity": "https://github.com/azurekid/agent-skills/.github/workflows/approve-skills.yml@refs/heads/main",
+      "issuer": "https://token.actions.githubusercontent.com"
+    },
+    {
+      "name": "app-specific skills approval",
+      "type": "sigstore",
+      "identity": "https://github.com/azurekid/app-one/.github/workflows/approve-skills.yml@refs/heads/main",
+      "issuer": "https://token.actions.githubusercontent.com"
+    }
+  ]
+}
+```
+
+These are example identities, not preconfigured approval services. Replace them with workflows you actually control and trust. When editing an existing policy, add entries to its `trusted_signers` array and preserve its other settings. Running `skillseal init --force` replaces the file; it does not append another signer.
+
+Every listed workflow is trusted to sign any discovered skill. Entries do not restrict a signer to skills in a particular application repository. Only add workflows whose approvals you accept across the projects using this policy.
 
 ### 4. Get the skills to developers
 
