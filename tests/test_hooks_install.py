@@ -118,13 +118,14 @@ def test_install_is_idempotent_and_keeps_other_hooks(tmp_path):
     settings.parent.mkdir(parents=True)
     other = {"matcher": "Bash", "hooks": [{"type": "command", "command": "my-linter"}]}
     settings.write_text(json.dumps({"permissions": {"deny": ["Bash(rm *)"]}, "hooks": {"PreToolUse": [other]}}))
-    install("claude", "project", proj)
-    install("claude", "project", proj)
+    install("claude", "project", proj, windows=False)
+    install("claude", "project", proj, windows=False)
     data = json.loads(settings.read_text())
     assert data["permissions"] == {"deny": ["Bash(rm *)"]}
     pre = data["hooks"]["PreToolUse"]
     assert pre[0] == other and len(pre) == 2
     assert pre[1]["hooks"][0]["command"] == "skillseal hook claude PreToolUse || exit 2"
+    assert pre[1]["hooks"][0]["onFailure"] == "block"
     assert len(data["hooks"]["SessionStart"]) == 1
 
 
@@ -134,7 +135,7 @@ def test_install_is_idempotent_and_keeps_other_hooks(tmp_path):
     ("copilot", ".github/hooks/skillseal.json"),
 ])
 def test_install_writes_agent_files(tmp_path, agent, rel):
-    paths, _ = install(agent, "project", tmp_path)
+    paths, _ = install(agent, "project", tmp_path, windows=False)
     assert paths == [tmp_path / rel]
     data = json.loads((tmp_path / rel).read_text())
     text = json.dumps(data)
@@ -198,8 +199,14 @@ def test_opencode_plugin(project, keys, tmp_path, signed, exe_ok, expected):
     assert r.stdout.strip().startswith(expected), r.stdout + r.stderr
 
 
+@pytest.mark.parametrize("windows,exe", [
+    (False, "skillseal"),
+    (False, "/opt/my tools/skillseal"),
+    (True, "skillseal"),
+    (True, r"C:\Program Files\it's\skillseal.exe"),
+])
 @pytest.mark.parametrize("agent", ["claude", "codex", "gemini", "copilot", "opencode"])
-def test_uninstall_removes_only_ours(tmp_path, agent):
+def test_uninstall_removes_only_ours(tmp_path, agent, windows, exe):
     from skillseal.install import uninstall
 
     other = {"matcher": "Bash", "hooks": [{"type": "command", "command": "my-linter"}]}
@@ -207,7 +214,11 @@ def test_uninstall_removes_only_ours(tmp_path, agent):
         f = tmp_path / ".claude" / "settings.json"
         f.parent.mkdir(parents=True)
         f.write_text(json.dumps({"model": "x", "hooks": {"PreToolUse": [other]}}))
-    paths, _ = install(agent, "project", tmp_path)
+    install(agent, "project", tmp_path, exe=exe, windows=windows)
+    paths, _ = install(agent, "project", tmp_path, exe=exe, windows=windows)
+    if agent in ("claude", "codex", "gemini"):
+        events = json.loads(paths[0].read_text())["hooks"]
+        assert all(len([g for g in groups if g != other]) == 1 for groups in events.values())
     assert uninstall(agent, "project", tmp_path) == paths
     if agent == "claude":
         assert json.loads(paths[0].read_text()) == {"model": "x", "hooks": {"PreToolUse": [other]}}
@@ -216,3 +227,87 @@ def test_uninstall_removes_only_ours(tmp_path, agent):
     else:
         assert "skillseal" not in paths[0].read_text()
     assert uninstall(agent, "project", tmp_path) == []
+
+
+def _hook_commands(paths, agent, windows):
+    """Yield (event, how-to-run) for each blocking or session hook written for `agent`."""
+    data = json.loads(paths[0].read_text())
+    for event, entries in data["hooks"].items():
+        for entry in entries:
+            for h in entry.get("hooks", [entry]):
+                if agent == "copilot":
+                    yield event, ("ps", h["powershell"]) if windows else ("sh", h["bash"])
+                elif "args" in h:
+                    yield event, ("exec", [h["command"], *h["args"]])
+                elif agent == "codex" and windows:
+                    yield event, ("cmd", h["command"])
+                elif agent == "gemini" and windows:
+                    # Gemini CLI appends this to every PowerShell hook command.
+                    yield event, ("ps", h["command"] + "; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }")
+                else:
+                    yield event, ("sh", h["command"])
+
+
+def _run(how, payload, cwd, shell_exe=None):
+    kind, cmd = how
+    if kind == "exec":
+        args = cmd
+    elif kind == "sh":
+        args = ["sh", "-c", cmd]
+    elif kind == "cmd":
+        # Same command line Codex builds: %COMSPEC% /C "<command>"
+        args = f'{os.environ.get("COMSPEC", "cmd.exe")} /C "{cmd}"'
+    else:
+        args = [shell_exe, "-NoProfile", "-NonInteractive", "-Command", cmd]
+    return subprocess.run(args, input=payload, capture_output=True, text=True, cwd=cwd, timeout=120, check=False)
+
+
+def _real_skillseal(tmp_path):
+    found = shutil.which("skillseal") or shutil.which("skillseal", path=str(Path(sys.executable).parent))
+    if not found:
+        pytest.skip("skillseal console script not installed")
+    # A copy in a folder with a space and an apostrophe proves the quoting.
+    target = tmp_path / "my tools's" / Path(found).name
+    target.parent.mkdir()
+    shutil.copy2(found, target)
+    return str(target)
+
+
+SHELLS = ["powershell.exe", "pwsh"] if os.name == "nt" else [None]
+
+
+@pytest.mark.parametrize("shell_exe", SHELLS)
+@pytest.mark.parametrize("agent", ["claude", "codex", "gemini", "copilot"])
+@pytest.mark.parametrize("state", ["unsigned", "signed", "missing-binary"])
+def test_installed_hook_commands_run_in_real_shells(project, keys, tmp_path, agent, state, shell_exe):
+    windows = os.name == "nt"
+    if shell_exe and not shutil.which(shell_exe):
+        pytest.skip(f"{shell_exe} not installed")
+    skill = make_skill(project / (".claude" if agent == "claude" else ".agents") / "skills")
+    if state != "unsigned":
+        sign_skill(skill, method="key", private_key=keys[0])
+    if state == "missing-binary":
+        if agent == "claude" and windows:
+            pytest.skip("exec form: Claude Code itself blocks via onFailure when the binary is missing")
+        exe = str(tmp_path / "gone dir" / ("skillseal.exe" if windows else "skillseal"))
+    else:
+        exe = _real_skillseal(tmp_path)
+    paths, _ = install(agent, "project", project, exe=exe, windows=windows)
+    blocking = {"claude": "PreToolUse", "codex": "PreToolUse", "gemini": "BeforeTool", "copilot": "preToolUse"}[agent]
+    payload = json.dumps({"cwd": str(project), "tool_name": "Bash", "toolName": "bash"})
+    ran = 0
+    for event, how in _hook_commands(paths, agent, windows):
+        if event != blocking:
+            continue
+        r = _run(how, payload, project, shell_exe)
+        ran += 1
+        out = r.stdout + r.stderr
+        if state == "signed":
+            assert r.returncode == 0 and "not approved" not in out, (how, out)
+        elif state == "missing-binary":
+            assert r.returncode == 2, (how, r.returncode, out)
+        elif agent == "gemini":
+            assert r.returncode == 0 and json.loads(r.stdout)["decision"] == "deny", (how, out)
+        else:
+            assert r.returncode == 2 and "not approved" in out, (how, r.returncode, out)
+    assert ran == 1

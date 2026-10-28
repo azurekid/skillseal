@@ -281,7 +281,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: seal
-        uses: azurekid/skillseal@v0.1.0
+        uses: azurekid/skillseal@v0.2.0
         with:
           skills: "skills/*"
           scan: python scan_agents_md.py --fail-on HIGH {path}

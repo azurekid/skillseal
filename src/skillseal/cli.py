@@ -116,6 +116,8 @@ def cmd_hook(a) -> int:
 
 
 def _default_exe() -> str:
+    if getattr(sys, "frozen", False):  # standalone build: point hooks at this binary
+        return sys.executable
     # Agents started from a desktop launcher often lack ~/.local/bin on PATH, so use an absolute path.
     found = shutil.which("skillseal")
     return os.path.abspath(found) if found else "skillseal"

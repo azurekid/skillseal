@@ -4,17 +4,45 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 from pathlib import Path
 
 MARK = "skillseal hook"
 TIMEOUT = 60
+_OURS = re.compile(r"skillseal(?:\.exe)?['\"]? hook ", re.IGNORECASE)
+_EXE_NAME = re.compile(r"(?:^|[\\/])skillseal(?:\.exe)?$", re.IGNORECASE)
 
 
-def _cmd(exe: str, agent: str, event: str, guard: bool) -> str:
-    base = f"{shlex.quote(exe) if exe != 'skillseal' else exe} hook {agent} {event}"
+def _cmd(exe: str, agent: str, event: str, guard: bool, shell: str = "sh") -> str:
+    """Hook command line for the shell the agent uses: sh, cmd (cmd.exe) or ps (PowerShell)."""
+    args = f"hook {agent} {event}"
+    if shell == "ps":
+        quoted = "'" + exe.replace("'", "''") + "'"
+        # $? is false when the program is missing or exits non-zero.
+        return f"& {quoted} {args}" + ("; if (-not $?) { exit 2 }" if guard else "")
+    if shell == "cmd":
+        quoted = f'"{exe}"' if exe != "skillseal" else exe
+    else:
+        quoted = shlex.quote(exe) if exe != "skillseal" else exe
     # A crash or missing binary must block, not allow: map any failure to exit 2.
-    return f"{base} || exit 2" if guard else base
+    return f"{quoted} {args} || exit 2" if guard else f"{quoted} {args}"
+
+
+def _handler_is_ours(h: object) -> bool:
+    if not isinstance(h, dict):
+        return False
+    text = " ".join(str(h.get(k, "")) for k in ("command", "bash", "powershell"))
+    if _OURS.search(text):
+        return True
+    args = h.get("args")
+    return isinstance(args, list) and args[:1] == ["hook"] and bool(_EXE_NAME.search(str(h.get("command", ""))))
+
+
+def _entry_is_ours(entry: object) -> bool:
+    if isinstance(entry, dict) and isinstance(entry.get("hooks"), list):
+        return any(_handler_is_ours(h) for h in entry["hooks"])
+    return _handler_is_ours(entry)
 
 
 def _load_json(path: Path) -> dict:
@@ -36,7 +64,7 @@ def _write_json(path: Path, data: dict) -> None:
 
 def _merge_groups(data: dict, event: str, group: dict) -> None:
     hooks = data.setdefault("hooks", {})
-    groups = [g for g in hooks.get(event, []) if not any(MARK in str(h.get("command", "")) for h in g.get("hooks", []))]
+    groups = [g for g in hooks.get(event, []) if not _entry_is_ours(g)]
     groups.append(group)
     hooks[event] = groups
 
@@ -51,50 +79,63 @@ def _group(command: str, matcher: str | None, timeout: int, name: str | None = N
     return group
 
 
-def install_claude(base: Path, exe: str) -> list[Path]:
+def _claude_group(exe: str, event: str, guard: bool, matcher: str | None, windows: bool) -> dict:
+    if windows:
+        # Claude Code runs shell-form hooks in Git Bash or PowerShell on Windows; exec form needs no shell.
+        handler: dict = {"type": "command", "command": exe, "args": ["hook", "claude", event], "timeout": TIMEOUT}
+    else:
+        handler = {"type": "command", "command": _cmd(exe, "claude", event, guard), "timeout": TIMEOUT}
+    if guard:
+        handler["onFailure"] = "block"  # also block on crash or timeout (Claude Code 2.1.295+)
+    group: dict = {"hooks": [handler]}
+    return {"matcher": matcher, **group} if matcher is not None else group
+
+
+def install_claude(base: Path, exe: str, windows: bool = False) -> list[Path]:
     path = base / ".claude" / "settings.json"
     data = _load_json(path)
-    _merge_groups(data, "SessionStart", _group(_cmd(exe, "claude", "SessionStart", False), None, TIMEOUT))
+    _merge_groups(data, "SessionStart", _claude_group(exe, "SessionStart", False, None, windows))
     for event in ("UserPromptSubmit", "UserPromptExpansion"):
-        _merge_groups(data, event, _group(_cmd(exe, "claude", event, True), None, TIMEOUT))
-    _merge_groups(data, "PreToolUse", _group(_cmd(exe, "claude", "PreToolUse", True), "*", TIMEOUT))
+        _merge_groups(data, event, _claude_group(exe, event, True, None, windows))
+    _merge_groups(data, "PreToolUse", _claude_group(exe, "PreToolUse", True, "*", windows))
     _write_json(path, data)
     return [path]
 
 
-def install_codex(base: Path, exe: str) -> list[Path]:
+def install_codex(base: Path, exe: str, windows: bool = False) -> list[Path]:
     path = base / ".codex" / "hooks.json"
+    shell = "cmd" if windows else "sh"  # Codex runs hooks with %COMSPEC% /C on Windows
     data = _load_json(path)
-    _merge_groups(data, "SessionStart", _group(_cmd(exe, "codex", "SessionStart", False), None, TIMEOUT))
-    _merge_groups(data, "PreToolUse", _group(_cmd(exe, "codex", "PreToolUse", True), "*", TIMEOUT))
+    _merge_groups(data, "SessionStart", _group(_cmd(exe, "codex", "SessionStart", False, shell), None, TIMEOUT))
+    _merge_groups(data, "PreToolUse", _group(_cmd(exe, "codex", "PreToolUse", True, shell), "*", TIMEOUT))
     _write_json(path, data)
     return [path]
 
 
-def install_gemini(base: Path, exe: str) -> list[Path]:
+def install_gemini(base: Path, exe: str, windows: bool = False) -> list[Path]:
     path = base / ".gemini" / "settings.json"
+    shell = "ps" if windows else "sh"  # Gemini CLI runs hooks with PowerShell on Windows
     data = _load_json(path)
     ms = TIMEOUT * 1000
-    _merge_groups(data, "SessionStart", _group(_cmd(exe, "gemini", "SessionStart", False), None, ms, "skillseal-session"))
-    _merge_groups(data, "BeforeTool", _group(_cmd(exe, "gemini", "BeforeTool", True), "*", ms, "skillseal"))
+    _merge_groups(data, "SessionStart", _group(_cmd(exe, "gemini", "SessionStart", False, shell), None, ms, "skillseal-session"))
+    _merge_groups(data, "BeforeTool", _group(_cmd(exe, "gemini", "BeforeTool", True, shell), "*", ms, "skillseal"))
     _write_json(path, data)
     return [path]
 
 
 def install_copilot(base: Path, exe: str, user: bool) -> list[Path]:
     path = (base / ".copilot" / "hooks" if user else base / ".github" / "hooks") / "skillseal.json"
-    ps = lambda event: f"& {_cmd(exe, 'copilot', event, False)}; if (-not $?) {{ exit 2 }}"  # noqa: E731
     ours = {
         "sessionStart": {"type": "command", "bash": _cmd(exe, "copilot", "sessionStart", False),
-                         "powershell": "& " + _cmd(exe, "copilot", "sessionStart", False), "timeoutSec": TIMEOUT},
+                         "powershell": _cmd(exe, "copilot", "sessionStart", False, "ps"), "timeoutSec": TIMEOUT},
         "preToolUse": {"type": "command", "bash": _cmd(exe, "copilot", "preToolUse", True),
-                       "powershell": ps("preToolUse"), "timeoutSec": TIMEOUT},
+                       "powershell": _cmd(exe, "copilot", "preToolUse", True, "ps"), "timeoutSec": TIMEOUT},
     }
     data = _load_json(path)
     data["version"] = 1
     hooks = data.setdefault("hooks", {})
     for event, handler in ours.items():
-        kept = [h for h in hooks.get(event, []) if MARK not in str(h.get("bash", "")) + str(h.get("command", ""))]
+        kept = [h for h in hooks.get(event, []) if not _handler_is_ours(h)]
         hooks[event] = kept + [handler]
     _write_json(path, data)
     return [path]
@@ -209,7 +250,7 @@ def _strip_ours(data: dict) -> bool:
         entries = hooks[event]
         if not isinstance(entries, list):
             continue
-        kept = [e for e in entries if MARK not in json.dumps(e)]
+        kept = [e for e in entries if not _entry_is_ours(e)]
         if len(kept) != len(entries):
             changed = True
             if kept:
@@ -253,17 +294,20 @@ def uninstall(agent: str, scope: str, project: Path) -> list[Path]:
     return touched
 
 
-def install(agent: str, scope: str, project: Path, exe: str = "skillseal") -> tuple[list[Path], str]:
+def install(agent: str, scope: str, project: Path, exe: str = "skillseal",
+            windows: bool | None = None) -> tuple[list[Path], str]:
+    if windows is None:
+        windows = os.name == "nt"
     home = Path(os.path.expanduser("~"))
     base = home if scope == "user" else project
     if agent == "claude":
-        return install_claude(base, exe), ""
+        return install_claude(base, exe, windows), ""
     if agent == "codex":
         note = "Codex asks you to review new hooks once: run /hooks in Codex and trust the skillseal hooks."
-        return install_codex(base, exe), note
+        return install_codex(base, exe, windows), note
     if agent == "gemini":
         note = "Gemini CLI shows a warning for new project hooks; accept it once."
-        return install_gemini(base, exe), note if scope == "project" else ""
+        return install_gemini(base, exe, windows), note if scope == "project" else ""
     if agent == "copilot":
         return install_copilot(base, exe, user=scope == "user"), ""
     if agent == "opencode":

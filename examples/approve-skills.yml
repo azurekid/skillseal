@@ -33,7 +33,7 @@ jobs:
             https://raw.githubusercontent.com/azurekid/AgentTrap/main/scan_agents_md.py
 
       - id: seal
-        uses: azurekid/skillseal@v0.1.0
+        uses: azurekid/skillseal@v0.2.0
         with:
           skills: "skills/*"
           scan: python ${{ runner.temp }}/scan_agents_md.py --fail-on HIGH {path}
