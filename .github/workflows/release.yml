@@ -136,3 +136,22 @@ jobs:
           if ($v -ne "skillseal $($env:GITHUB_REF_NAME.TrimStart('v'))") { throw "unexpected version: $v" }
           irm "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/$env:GITHUB_SHA/install.ps1" | iex
           Write-Host "install.ps1 OK: $v"
+
+  check-install-unix:
+    needs: publish
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install published release without Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/install home"
+          mkdir -p "$HOME"
+          sh install.sh "$GITHUB_REF_NAME"
+          test "$("$HOME/.local/bin/skillseal" --version)" = "skillseal ${GITHUB_REF_NAME#v}"
+          cat install.sh | sh
+          test "$("$HOME/.local/bin/skillseal" --version)" = "skillseal ${GITHUB_REF_NAME#v}"

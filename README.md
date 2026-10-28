@@ -73,25 +73,29 @@ Good to know on Windows:
 
 #### B. macOS or Linux, no Python
 
-Download and unpack the build for your machine to `~/.local/share/skillseal`, and link it into `~/.local/bin`:
+Open **Terminal** and paste this one command:
 
 ```bash
-# macOS (Apple silicon):
-asset=skillseal-macos-arm64.tar.gz
-# Linux x64:
-# asset=skillseal-linux-x64.tar.gz
+curl -fsSL https://raw.githubusercontent.com/azurekid/skillseal/main/install.sh | sh
+```
 
-cd "$(mktemp -d)"
-curl -fsSLO "https://github.com/azurekid/skillseal/releases/latest/download/$asset"
-curl -fsSLO "https://github.com/azurekid/skillseal/releases/latest/download/SHA256SUMS.txt"
-grep " $asset\$" SHA256SUMS.txt | shasum -a 256 -c -   # must print OK (Linux without perl: sha256sum -c -)
-mkdir -p ~/.local/share ~/.local/bin
-rm -rf ~/.local/share/skillseal && tar -xzf "$asset" -C ~/.local/share
-ln -sf ~/.local/share/skillseal/skillseal ~/.local/bin/skillseal
+The installer detects your machine, downloads the right build from the [latest release](https://github.com/azurekid/skillseal/releases/latest), checks its SHA256 checksum and installs it for **your user**. It also sets up your shell PATH (bash, zsh or fish). No Python, `sudo`, manual unpacking or copying files.
+
+**Open a new terminal**, then check:
+
+```bash
 skillseal --version
 ```
 
-If `skillseal` is not found, add `~/.local/bin` to your `PATH`. On macOS, files downloaded with `curl` are not quarantined, so Gatekeeper does not stop them. The Linux build needs glibc 2.35 or newer (Ubuntu 22.04, Debian 12, RHEL 10 and later). Intel Macs and other systems: use option C.
+That is it. Continue with **Step 2** below.
+
+Good to know:
+
+* Update: close your AI agents and run the same install command again. Your trust policy and agent hooks stay.
+* The program lives in `~/.local/share/skillseal`, with a link in `~/.local/bin`. PATH setup is saved in your shell config. Other shells use `~/.profile`; if your shell does not read it, add `~/.local/bin` to its PATH.
+* Supported builds: macOS on Apple silicon and Linux x64 with glibc 2.35 or newer (for example Ubuntu 22.04 or Debian 12). Intel Macs and other systems: use option C.
+* The installer needs `curl`, `tar`, and either `shasum` or `sha256sum`. If one is missing, it stops with a clear message.
+* Prefer to read the script first? Download [install.sh](install.sh), inspect it, then run `sh install.sh`. To install a specific release: `sh install.sh v0.2.0`.
 
 #### C. With Python
 
@@ -303,7 +307,7 @@ Then remove the program:
 | Installed with | Remove with |
 | --- | --- |
 | A. Windows | `Remove-Item -Recurse -Force "$env:LOCALAPPDATA\Programs\skillseal"`, then remove that folder from your user `Path` ("Edit environment variables for your account") |
-| B. macOS or Linux | `rm -rf ~/.local/share/skillseal ~/.local/bin/skillseal` |
+| B. macOS or Linux | `rm -rf ~/.local/share/skillseal ~/.local/bin/skillseal`. Optionally remove the `# skillseal` PATH entry from your shell config. |
 | C. Python | `pipx uninstall skillseal` or `uv tool uninstall skillseal` |
 
 Your policy (`~/.config/skillseal`) and cache (`~/.cache/skillseal`) stay. Delete those folders too if you want.

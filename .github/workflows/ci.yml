@@ -23,6 +23,9 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install ".[test]"
       - run: python -m pytest -q
+      - name: Test macOS and Linux installer
+        if: runner.os != 'Windows' && matrix.python == '3.13'
+        run: sh tests/test_install_sh.sh
 
   sigstore-e2e:
     # Real keyless signing with this workflow's identity, then verification.
