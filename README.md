@@ -158,14 +158,37 @@ skillseal check
 Example output:
 
 ```text
-policy: /home/you/.config/skillseal/policy.json  mode: audit  signers: 1
-agents: claude, copilot, codex, gemini, opencode, openclaw  skills found: 3
-[OK  ] /home/you/code/my-project/.github/skills/deploy  (verified)  signer: approval workflow
-[FAIL] /home/you/.claude/skills/old-helper  (unsigned)
-       - no skill.oms.sig
-[FAIL] /home/you/.claude/skills/.trash/pdf-tool  (unsigned)
-       - no skill.oms.sig
+   .-------.
+   |  S S  |   SKILLSEAL
+   |   v   |   Skill signature check
+    \     /
+     '---'
+
+  Mode     audit
+  Policy   ~/.config/skillseal/policy.json
+  Signers  1 trusted
+  Agents   claude, copilot, codex, gemini, opencode, openclaw
+
+  NEEDS APPROVAL (2)
+  ------------------------------------------------------------
+  [FAIL] ~/.claude/skills/old-helper
+         unsigned
+         - no skill.oms.sig
+  [FAIL] ~/.claude/skills/.trash/pdf-tool
+         unsigned
+         - no skill.oms.sig
+
+  VERIFIED (1)
+  ------------------------------------------------------------
+  [OK] ~/code/my-project/.github/skills/deploy
+         verified | signer: approval workflow
+
+  Summary: 3 skills | 1 verified | 2 not approved
+  Audit mode: configured agent guards do not block these skills.
+  Next: remove unapproved skills or ask your team lead to sign them.
 ```
+
+Skills that need attention come first. Home paths are shortened to `~`; verification reasons stay visible. Use `skillseal check --json` for the full, unchanged machine-readable results without the banner.
 
 Clean up every `[FAIL]` line before you go to enforce mode. For each one, either delete the folder, or ask your team lead to approve the skill. Watch out for hidden folders such as `~/.claude/skills/.trash`: they are checked too. Use `skillseal check --agent copilot` to only look at one agent.
 

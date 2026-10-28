@@ -13,9 +13,63 @@ from . import __version__
 from .discover import AGENTS, discover
 from .hooks import run_hook
 from .install import install, uninstall
-from .policy import GITHUB_ISSUER, MODES, PolicyError, load_policy, repo_policy_path, user_policy_path
+from .policy import GITHUB_ISSUER, MODES, Policy, PolicyError, load_policy, repo_policy_path, user_policy_path
 from .sign import SignError, run_scanner, sign_skill
-from .verify import verify_skill
+from .verify import Result, verify_skill
+
+
+def _display_path(value: str) -> str:
+    path = Path(value)
+    try:
+        return "~/" + path.relative_to(Path.home()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _print_check(results: list[Result], policy: Policy, agents: list[str]) -> None:
+    print(r"   .-------.")
+    print(r"   |  S S  |   SKILLSEAL")
+    print(r"   |   v   |   Skill signature check")
+    print(r"    \     /")
+    print(r"     '---'")
+    print()
+    print(f"  Mode     {policy.mode}")
+    print(f"  Policy   {', '.join(_display_path(p) for p in policy.sources) or '(none)'}")
+    print(f"  Signers  {len(policy.signers)} trusted")
+    print(f"  Agents   {', '.join(agents)}")
+    print()
+    if not policy.signers:
+        print("  WARNING: No trusted signers configured.")
+        print("  Run skillseal init with your team's signer before using enforce mode.")
+        print()
+    failed = [r for r in results if not r.ok]
+    verified = [r for r in results if r.ok]
+    for title, group in (("NEEDS APPROVAL", failed), ("VERIFIED", verified)):
+        if not group:
+            continue
+        print(f"  {title} ({len(group)})")
+        print("  " + "-" * 60)
+        for r in group:
+            mark = "OK" if r.ok else "FAIL"
+            print(f"  [{mark}] {_display_path(r.path)}")
+            print(f"         {r.status}" + (f" | signer: {r.signer}" if r.signer else ""))
+            for reason in r.reasons[:20]:
+                print(f"         - {reason}")
+            if len(r.reasons) > 20:
+                print(f"         ... {len(r.reasons) - 20} more reasons (use --json to see all)")
+        print()
+    print(f"  Summary: {len(results)} skills | {len(verified)} verified | {len(failed)} not approved")
+    if not results:
+        print("  No skills found in the selected agents' skill folders.")
+    elif failed:
+        if policy.mode == "enforce":
+            print("  Enforce mode: configured agent guards block tool use until these skills are approved.")
+        else:
+            print(f"  {policy.mode.capitalize()} mode: configured agent guards do not block these skills.")
+        print("  Next: remove unapproved skills or ask your team lead to sign them.")
+    else:
+        print("  All discovered skills have a valid signature from a trusted signer.")
+    print()
 
 
 def _print_results(results, as_json: bool) -> None:
@@ -104,10 +158,10 @@ def cmd_check(a) -> int:
     agents = a.agent or list(AGENTS)
     skills = discover(agents, cwd, policy.skill_roots)
     results = [verify_skill(s, policy, use_cache=not a.no_cache) for s in skills]
-    if not a.json:
-        print(f"policy: {', '.join(policy.sources) or '(none)'}  mode: {policy.mode}  signers: {len(policy.signers)}")
-        print(f"agents: {', '.join(agents)}  skills found: {len(results)}")
-    _print_results(results, a.json)
+    if a.json:
+        _print_results(results, True)
+    else:
+        _print_check(results, policy, agents)
     return 0 if all(r.ok for r in results) else 1
 
 
