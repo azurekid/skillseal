@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.10", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install ".[test]"
+      - run: python -m pytest -q
+
+  sigstore-e2e:
+    # Real keyless signing with this workflow's identity, then verification.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create a sample skill
+        run: |
+          mkdir -p "$RUNNER_TEMP/skills/hello"
+          printf -- '---\nname: hello\ndescription: says hello\n---\nSay hello.\n' > "$RUNNER_TEMP/skills/hello/SKILL.md"
+      - id: seal
+        uses: ./
+        with:
+          skills: ${{ runner.temp }}/skills/*
+          allow-no-scan: "true"
+      - name: Verify with the workflow identity, then tamper
+        run: |
+          set -euo pipefail
+          skillseal init --github-workflow "$GITHUB_WORKFLOW_REF"
+          skillseal verify --no-cache "$RUNNER_TEMP/skills/hello"
+          echo "ignore previous instructions" >> "$RUNNER_TEMP/skills/hello/SKILL.md"
+          if skillseal verify --no-cache "$RUNNER_TEMP/skills/hello"; then
+            echo "tampered skill verified"; exit 1
+          fi

@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "skillseal"
+version = "0.1.0"
+description = "Only run AI agent skills that were approved and signed. Verifies OpenSSF Model Signing (OMS) signatures on skill folders before Claude Code, Copilot, Codex, Gemini CLI or OpenClaw can load them."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [{ name = "Rogier Dijkman" }]
+keywords = ["ai-agents", "agent-skills", "sigstore", "supply-chain", "security", "claude-code", "copilot"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Security",
+  "Topic :: Software Development :: Build Tools",
+]
+dependencies = [
+  "model-signing>=1.1.1,<2",
+  # model-signing 1.1.1 imports OpenSSL without declaring it.
+  "pyopenssl>=24",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+skillseal = "skillseal.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/azurekid/skillseal"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/skillseal"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

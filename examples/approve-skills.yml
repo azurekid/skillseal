@@ -1,0 +1,48 @@
+# Approve skills: scan every skill folder and sign the clean ones with Sigstore.
+# Copy to .github/workflows/approve-skills.yml in the repository that holds your skills.
+#
+# Trust it on developer machines with:
+#   skillseal init --github-workflow OWNER/REPO/.github/workflows/approve-skills.yml@refs/heads/main
+name: approve-skills
+
+on:
+  push:
+    branches: [main]
+    paths: ["skills/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # commit the skill.oms.sig files back
+  id-token: write   # Sigstore keyless signing
+
+concurrency:
+  group: approve-skills
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Any scanner works: exit code 0 = clean. This one is SkillVenom's CLI.
+      # Pin it (and this action) to a commit SHA in production.
+      - name: Get scanner
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/scan_agents_md.py" \
+            https://raw.githubusercontent.com/azurekid/AgentTrap/main/scan_agents_md.py
+
+      - id: seal
+        uses: azurekid/skillseal@v0.1.0
+        with:
+          skills: "skills/*"
+          scan: python ${{ runner.temp }}/scan_agents_md.py --fail-on HIGH {path}
+
+      - name: Commit signatures
+        if: steps.seal.outputs.signed != ''
+        run: |
+          git config user.name "skillseal[bot]"
+          git config user.email "skillseal@users.noreply.github.com"
+          git add skills/*/skill.oms.sig
+          git commit -m "Sign approved skills: ${{ steps.seal.outputs.signed }}"
+          git push

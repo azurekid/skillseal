@@ -1,0 +1,18 @@
+{
+  "mode": "enforce",
+  "allow_repo_signers": false,
+  "trusted_signers": [
+    {
+      "name": "our approval workflow",
+      "type": "sigstore",
+      "identity": "https://github.com/YOUR-ORG/agent-skills/.github/workflows/approve-skills.yml@refs/heads/main",
+      "issuer": "https://token.actions.githubusercontent.com"
+    },
+    {
+      "name": "NVIDIA verified skills",
+      "type": "certificate",
+      "certificate_chain": ["nv-agent-root-cert.pem"]
+    }
+  ],
+  "skill_roots": []
+}

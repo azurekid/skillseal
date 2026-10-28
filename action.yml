@@ -1,0 +1,93 @@
+name: skillseal sign
+description: Scan agent skill folders and sign the clean ones with Sigstore (OpenSSF Model Signing format).
+author: azurekid
+branding:
+  icon: shield
+  color: green
+
+inputs:
+  skills:
+    description: Newline or space separated list of skill folders, or glob patterns (for example "skills/*").
+    required: true
+  scan:
+    description: >
+      Scanner command. Exit code 0 means clean, anything else blocks signing.
+      "{path}" is replaced by the skill folder. Leave empty only together with allow-no-scan.
+    required: false
+    default: ""
+  allow-no-scan:
+    description: Sign without a scan gate (not recommended).
+    required: false
+    default: "false"
+  only-changed:
+    description: Only sign skills that are unsigned or whose signature no longer matches.
+    required: false
+    default: "true"
+  python-version:
+    description: Python version used to run skillseal.
+    required: false
+    default: "3.12"
+
+outputs:
+  signed:
+    description: Space separated list of skill folders that were (re)signed.
+    value: ${{ steps.sign.outputs.signed }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install skillseal (same version as this action)
+      shell: bash
+      run: python -m pip install --quiet "${{ github.action_path }}"
+
+    - name: Scan and sign
+      id: sign
+      shell: bash
+      env:
+        SKILLS: ${{ inputs.skills }}
+        SCAN: ${{ inputs.scan }}
+        ALLOW_NO_SCAN: ${{ inputs.allow-no-scan }}
+        ONLY_CHANGED: ${{ inputs.only-changed }}
+      run: |
+        set -euo pipefail
+        shopt -s nullglob
+        if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+          echo "::error::Sigstore signing needs 'permissions: id-token: write' on the job."
+          exit 1
+        fi
+        scan_args=()
+        if [ -n "$SCAN" ]; then
+          scan_args=(--scan "$SCAN")
+        elif [ "$ALLOW_NO_SCAN" = "true" ]; then
+          scan_args=(--no-scan)
+        else
+          echo "::error::Set the 'scan' input (or allow-no-scan: true)."
+          exit 1
+        fi
+        # Verify against our own identity so unchanged skills are skipped.
+        identity="https://github.com/${GITHUB_WORKFLOW_REF}"
+        policy="$RUNNER_TEMP/skillseal-self.json"
+        printf '{"trusted_signers":[{"name":"self","type":"sigstore","identity":"%s","issuer":"https://token.actions.githubusercontent.com"}]}' "$identity" > "$policy"
+        signed=()
+        failed=0
+        for pattern in $SKILLS; do
+          for dir in $pattern; do
+            [ -f "$dir/SKILL.md" ] || continue
+            if [ "$ONLY_CHANGED" = "true" ] && skillseal verify --no-cache --policy "$policy" "$dir" >/dev/null 2>&1; then
+              echo "unchanged: $dir"
+              continue
+            fi
+            if skillseal sign "${scan_args[@]}" "$dir"; then
+              signed+=("$dir")
+            else
+              failed=1
+            fi
+          done
+        done
+        echo "signed=${signed[*]}" >> "$GITHUB_OUTPUT"
+        echo "Signed ${#signed[@]} skill(s) as $identity"
+        exit $failed
