@@ -90,34 +90,35 @@ main() {
     # Keep variables literal so the user's shell expands them at startup.
     # shellcheck disable=SC2016
     path_line='export PATH="$HOME/.local/bin:$PATH"'
-    shell=${SHELL:-}
-    case "${shell##*/}" in
-        zsh) profiles="${ZDOTDIR:-$HOME}/.zshrc" ;;
-        bash)
-            profiles="$HOME/.bashrc"
-            if [ -f "$HOME/.bash_profile" ]; then login="$HOME/.bash_profile"
-            elif [ -f "$HOME/.bash_login" ]; then login="$HOME/.bash_login"
-            elif [ -f "$HOME/.profile" ]; then login="$HOME/.profile"
-            else login="$HOME/.bash_profile"; fi
-            ;;
-        fish)
-            profiles="${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish"
-            # shellcheck disable=SC2016
-            path_line='fish_add_path "$HOME/.local/bin"'
-            ;;
-        *) profiles="$HOME/.profile" ;;
-    esac
     add_path() {
         mkdir -p "$(dirname "$1")"
         if ! grep -Fqx "$path_line" "$1" 2>/dev/null; then
             printf '\n# skillseal\n%s\n' "$path_line" >> "$1"
         fi
+        echo "PATH setup saved to $1."
     }
-    add_path "$profiles"
-    if [ "${login:-}" ]; then add_path "$login"; fi
+    # SHELL is the account default, not necessarily the shell in a VS Code terminal.
+    add_path "$HOME/.bashrc"
+    if [ -f "$HOME/.bash_profile" ]; then login="$HOME/.bash_profile"
+    elif [ -f "$HOME/.bash_login" ]; then login="$HOME/.bash_login"
+    elif [ -f "$HOME/.profile" ]; then login="$HOME/.profile"
+    else login="$HOME/.bash_profile"; fi
+    add_path "$login"
+    add_path "${ZDOTDIR:-$HOME}/.zshrc"
+    shell=${SHELL:-}
+    case "${shell##*/}" in
+        fish)
+            # shellcheck disable=SC2016
+            path_line='fish_add_path "$HOME/.local/bin"'
+            add_path "${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish"
+            ;;
+        bash|zsh) ;;
+        *) add_path "$HOME/.profile" ;;
+    esac
     echo "Installed: $dest/skillseal"
-    echo "PATH setup saved to $profiles${login:+ and $login}."
     echo "Open a new terminal, then run: skillseal --version"
+    # shellcheck disable=SC2016
+    echo 'Or in this bash/zsh terminal, run: export PATH="$HOME/.local/bin:$PATH"'
     echo "To update later, close your AI agents and run the same install command again."
 }
 

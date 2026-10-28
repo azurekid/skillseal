@@ -87,12 +87,19 @@ The installer detects your machine, downloads the right build from the [latest r
 skillseal --version
 ```
 
+To keep using the current bash or zsh terminal instead, run:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+skillseal --version
+```
+
 That is it. Continue with **Step 2** below.
 
 Good to know:
 
 * Update: close your AI agents and run the same install command again. Your trust policy and agent hooks stay.
-* The program lives in `~/.local/share/skillseal`, with a link in `~/.local/bin`. PATH setup is saved in your shell config. Other shells use `~/.profile`; if your shell does not read it, add `~/.local/bin` to its PATH.
+* The program lives in `~/.local/share/skillseal`, with a link in `~/.local/bin`. The installer configures both bash and zsh, because VS Code may use a different shell than your account default. When your default shell is fish, it configures fish too. Other shells use `~/.profile`; if your shell does not read it, add `~/.local/bin` to its PATH.
 * Supported builds: macOS on Apple silicon and Linux x64 with glibc 2.35 or newer (for example Ubuntu 22.04 or Debian 12). Intel Macs and other systems: use option C.
 * The installer needs `curl`, `tar`, and either `shasum` or `sha256sum`. If one is missing, it stops with a clear message.
 * Prefer to read the script first? Download [install.sh](install.sh), inspect it, then run `sh install.sh`. To install a specific release: `sh install.sh v0.2.0`.

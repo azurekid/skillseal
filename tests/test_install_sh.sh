@@ -51,8 +51,13 @@ mkdir -p "$HOME"
 cat "$repo/install.sh" | sh
 test "$("$HOME/.local/bin/skillseal" --version)" = "skillseal installer-test"
 test "$(grep -Fc 'export PATH=' "$HOME/.zshrc")" = 1
+# The account default is zsh, but VS Code may run bash instead.
+test "$(HOME="$HOME" bash -ic 'command -v skillseal' 2>/dev/null)" = "$HOME/.local/bin/skillseal"
+test "$(HOME="$HOME" bash -lc 'command -v skillseal')" = "$HOME/.local/bin/skillseal"
 cat "$repo/install.sh" | sh
 test "$(grep -Fc 'export PATH=' "$HOME/.zshrc")" = 1
+test "$(grep -Fc 'export PATH=' "$HOME/.bashrc")" = 1
+test "$(grep -Fc 'export PATH=' "$HOME/.bash_profile")" = 1
 test "$(find "$HOME/.local/share" -name '.skillseal-install.*' | wc -l | tr -d ' ')" = 0
 
 # Failed updates must preserve the existing install.
