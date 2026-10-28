@@ -12,13 +12,14 @@ from pathlib import Path
 
 from . import SKILL_FILE
 
-AGENTS = ("claude", "copilot", "codex", "gemini", "openclaw")
+AGENTS = ("claude", "copilot", "codex", "gemini", "opencode", "openclaw")
 
 PROJECT_DIRS: dict[str, tuple[str, ...]] = {
     "claude": (".claude/skills",),
     "copilot": (".github/skills", ".claude/skills", ".agents/skills"),
     "codex": (".agents/skills",),
     "gemini": (".gemini/skills", ".agents/skills"),
+    "opencode": (".opencode/skills", ".claude/skills", ".agents/skills"),
     "openclaw": ("skills", ".agents/skills"),
 }
 
@@ -27,6 +28,7 @@ USER_DIRS: dict[str, tuple[str, ...]] = {
     "copilot": ("~/.copilot/skills", "~/.claude/skills", "~/.agents/skills"),
     "codex": ("~/.agents/skills", "/etc/codex/skills"),
     "gemini": ("~/.gemini/skills", "~/.agents/skills", "~/.gemini/extensions"),
+    "opencode": ("~/.config/opencode/skills", "~/.claude/skills", "~/.agents/skills"),
     "openclaw": ("~/.agents/skills", "~/.openclaw/skills"),
 }
 

@@ -100,6 +100,54 @@ def install_copilot(base: Path, exe: str, user: bool) -> list[Path]:
     return [path]
 
 
+OPENCODE_PLUGIN = """\
+// skillseal guard for OpenCode: blocks every tool call (including the `skill` tool)
+// while a skill OpenCode can load is unsigned, changed or signed by an untrusted signer.
+// Written by `skillseal install opencode`. Errors also block (fail closed).
+import { execFile } from "node:child_process";
+
+const SKILLSEAL = process.env.SKILLSEAL_BIN ?? __EXE__;
+
+function verify(cwd) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = execFile(
+        SKILLSEAL,
+        ["hook", "opencode", "tool.execute.before"],
+        { timeout: 60_000 },
+        (err, _stdout, stderr) => {
+          if (!err) return resolve(undefined);
+          resolve(String(stderr).trim() || `skillseal could not verify skills: ${err.message}`);
+        },
+      );
+    } catch (err) {
+      return resolve(`skillseal could not run: ${err}`);
+    }
+    child.on("error", (err) => resolve(`skillseal could not run: ${err.message}`));
+    child.stdin?.end(JSON.stringify({ cwd }));
+  });
+}
+
+export const SkillsealGuard = async ({ directory, worktree }) => {
+  const cwd = directory || worktree || process.cwd();
+  return {
+    "tool.execute.before": async (_input, _output) => {
+      const reason = await verify(cwd);
+      if (reason) throw new Error(reason);
+    },
+  };
+};
+"""
+
+
+def install_opencode(base: Path, exe: str, user: bool) -> list[Path]:
+    path = (base / ".config" / "opencode" / "plugins" if user else base / ".opencode" / "plugins") / "skillseal.js"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(OPENCODE_PLUGIN.replace("__EXE__", json.dumps(exe)), encoding="utf-8")
+    return [path]
+
+
 OPENCLAW_PLUGIN = """\
 // skillseal guard for OpenClaw. OpenClaw plugin APIs are experimental: pin your host version.
 import { execFile } from "node:child_process";
@@ -152,6 +200,59 @@ def install_openclaw(home: Path, exe: str) -> tuple[list[Path], str]:
     return [path], OPENCLAW_CONFIG_HINT % path
 
 
+def _strip_ours(data: dict) -> bool:
+    changed = False
+    hooks = data.get("hooks")
+    if not isinstance(hooks, dict):
+        return False
+    for event in list(hooks):
+        entries = hooks[event]
+        if not isinstance(entries, list):
+            continue
+        kept = [e for e in entries if MARK not in json.dumps(e)]
+        if len(kept) != len(entries):
+            changed = True
+            if kept:
+                hooks[event] = kept
+            else:
+                del hooks[event]
+    if not hooks:
+        del data["hooks"]
+    return changed
+
+
+def uninstall(agent: str, scope: str, project: Path) -> list[Path]:
+    """Remove only skillseal's own entries; other hooks and settings stay."""
+    home = Path(os.path.expanduser("~"))
+    base = home if scope == "user" else project
+    json_files = {
+        "claude": [base / ".claude" / "settings.json"],
+        "codex": [base / ".codex" / "hooks.json"],
+        "gemini": [base / ".gemini" / "settings.json"],
+        "copilot": [(base / ".copilot" / "hooks" if scope == "user" else base / ".github" / "hooks") / "skillseal.json"],
+    }.get(agent, [])
+    plugin_files = {
+        "opencode": [(base / ".config" / "opencode" / "plugins" if scope == "user" else base / ".opencode" / "plugins") / "skillseal.js"],
+        "openclaw": [home / ".openclaw" / "policies" / "skillseal-guard.ts"],
+    }.get(agent, [])
+    touched: list[Path] = []
+    for path in json_files:
+        if not path.is_file():
+            continue
+        data = _load_json(path)
+        if _strip_ours(data):
+            if agent == "copilot" and set(data) <= {"version"}:
+                path.unlink()
+            else:
+                _write_json(path, data)
+            touched.append(path)
+    for path in plugin_files:
+        if path.is_file() and MARK.split()[0] in path.read_text(encoding="utf-8"):
+            path.unlink()
+            touched.append(path)
+    return touched
+
+
 def install(agent: str, scope: str, project: Path, exe: str = "skillseal") -> tuple[list[Path], str]:
     home = Path(os.path.expanduser("~"))
     base = home if scope == "user" else project
@@ -165,6 +266,8 @@ def install(agent: str, scope: str, project: Path, exe: str = "skillseal") -> tu
         return install_gemini(base, exe), note if scope == "project" else ""
     if agent == "copilot":
         return install_copilot(base, exe, user=scope == "user"), ""
+    if agent == "opencode":
+        return install_opencode(base, exe, user=scope == "user"), "Restart OpenCode to load the plugin."
     if agent == "openclaw":
         return install_openclaw(home, exe)
     raise ValueError(f"unknown agent {agent!r}")

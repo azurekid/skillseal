@@ -27,6 +27,7 @@ BLOCKING_EVENTS = {
     "codex": {"PreToolUse"},
     "copilot": {"preToolUse", "PreToolUse"},
     "gemini": {"BeforeTool"},
+    "opencode": {"tool.execute.before"},
     "openclaw": {"before_tool_call"},
 }
 

@@ -1,4 +1,9 @@
 import json
+import os
+import shutil
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -154,3 +159,60 @@ def test_install_copilot_keeps_other_hooks(tmp_path):
     assert hooks["postToolUse"] == [mine]
     assert hooks["preToolUse"][0] == mine and len(hooks["preToolUse"]) == 2
     assert len(hooks["sessionStart"]) == 1
+
+
+NODE_HARNESS = """
+const { pathToFileURL } = require("node:url");
+(async () => {
+  const mod = await import(pathToFileURL(process.argv[2]).href);
+  const hooks = await mod.SkillsealGuard({ directory: process.argv[3], worktree: process.argv[3] });
+  try {
+    await hooks["tool.execute.before"]({ tool: "bash" }, { args: {} });
+    console.log("ALLOWED");
+  } catch (e) {
+    console.log("BLOCKED " + e.message.split("\\n")[0]);
+  }
+})();
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.parametrize("signed,exe_ok,expected", [
+    (False, True, "BLOCKED skillseal: 1 skill not approved"),
+    (True, True, "ALLOWED"),
+    (True, False, "BLOCKED skillseal could not"),
+])
+def test_opencode_plugin(project, keys, tmp_path, signed, exe_ok, expected):
+    skill = make_skill(project / ".opencode" / "skills")
+    if signed:
+        sign_skill(skill, method="key", private_key=keys[0])
+    exe = str(Path(sys.executable).with_name("skillseal")) if exe_ok else str(tmp_path / "missing-skillseal")
+    if exe_ok and not Path(exe).exists():
+        pytest.skip("skillseal console script not installed next to python")
+    paths, _ = install("opencode", "project", project, exe=exe)
+    assert paths == [project / ".opencode" / "plugins" / "skillseal.js"]
+    harness = tmp_path / "harness.cjs"
+    harness.write_text(NODE_HARNESS)
+    r = subprocess.run(["node", str(harness), str(paths[0]), str(project)], capture_output=True, text=True,
+                       env={**os.environ}, timeout=120, check=False)
+    assert r.stdout.strip().startswith(expected), r.stdout + r.stderr
+
+
+@pytest.mark.parametrize("agent", ["claude", "codex", "gemini", "copilot", "opencode"])
+def test_uninstall_removes_only_ours(tmp_path, agent):
+    from skillseal.install import uninstall
+
+    other = {"matcher": "Bash", "hooks": [{"type": "command", "command": "my-linter"}]}
+    if agent == "claude":
+        f = tmp_path / ".claude" / "settings.json"
+        f.parent.mkdir(parents=True)
+        f.write_text(json.dumps({"model": "x", "hooks": {"PreToolUse": [other]}}))
+    paths, _ = install(agent, "project", tmp_path)
+    assert uninstall(agent, "project", tmp_path) == paths
+    if agent == "claude":
+        assert json.loads(paths[0].read_text()) == {"model": "x", "hooks": {"PreToolUse": [other]}}
+    elif agent in ("copilot", "opencode"):
+        assert not paths[0].exists()
+    else:
+        assert "skillseal" not in paths[0].read_text()
+    assert uninstall(agent, "project", tmp_path) == []

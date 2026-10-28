@@ -5,13 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
 from . import __version__
 from .discover import AGENTS, discover
 from .hooks import run_hook
-from .install import install
+from .install import install, uninstall
 from .policy import GITHUB_ISSUER, MODES, PolicyError, load_policy, repo_policy_path, user_policy_path
 from .sign import SignError, run_scanner, sign_skill
 from .verify import verify_skill
@@ -114,14 +115,32 @@ def cmd_hook(a) -> int:
     return run_hook(a.agent, a.event or "", sys.stdin.read())
 
 
+def _default_exe() -> str:
+    # Agents started from a desktop launcher often lack ~/.local/bin on PATH, so use an absolute path.
+    found = shutil.which("skillseal")
+    return os.path.abspath(found) if found else "skillseal"
+
+
 def cmd_install(a) -> int:
     project = Path(a.project).resolve()
+    exe = a.exe or _default_exe()
+    if exe == "skillseal":
+        print("warning: skillseal is not on PATH; hooks will call plain 'skillseal' (pass --exe /full/path)", file=sys.stderr)
     for agent in a.agents:
-        paths, note = install(agent, a.scope, project, exe=a.exe)
+        paths, note = install(agent, a.scope, project, exe=exe)
         for p in paths:
             print(f"[{agent}] wrote {p}")
         if note:
             print(f"[{agent}] {note}")
+    print(f"hooks call: {exe}")
+    return 0
+
+
+def cmd_uninstall(a) -> int:
+    project = Path(a.project).resolve()
+    for agent in a.agents:
+        touched = uninstall(agent, a.scope, project)
+        print(f"[{agent}] " + (", ".join(f"cleaned {p}" for p in touched) if touched else f"nothing installed ({a.scope} scope)"))
     return 0
 
 
@@ -179,8 +198,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("agents", nargs="+", choices=AGENTS)
     s.add_argument("--scope", choices=["project", "user"], default="project")
     s.add_argument("--project", default=".")
-    s.add_argument("--exe", default="skillseal", help="command used inside hooks (default: skillseal on PATH)")
+    s.add_argument("--exe", help="command used inside hooks (default: absolute path of skillseal on PATH)")
     s.set_defaults(func=cmd_install)
+
+    s = sub.add_parser("uninstall", help="remove skillseal hooks from agent configs")
+    s.add_argument("agents", nargs="+", choices=AGENTS)
+    s.add_argument("--scope", choices=["project", "user"], default="project")
+    s.add_argument("--project", default=".")
+    s.set_defaults(func=cmd_uninstall)
     return p
 
 
