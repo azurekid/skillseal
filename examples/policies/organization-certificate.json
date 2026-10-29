@@ -1,0 +1,12 @@
+{
+  "mode": "audit",
+  "allow_repo_signers": false,
+  "trusted_signers": [
+    {
+      "name": "Organization skill approval CA",
+      "type": "certificate",
+      "certificate_chain": ["approval-ca.pem"]
+    }
+  ],
+  "revoked_skills": {}
+}

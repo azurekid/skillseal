@@ -3,6 +3,10 @@ name: Approve skills (reusable)
 on:
   workflow_call:
     inputs:
+      signing-method:
+        description: "key, certificate, or sigstore."
+        type: string
+        default: "key"
       skills:
         description: Space or newline separated skill folders or glob patterns.
         required: true
@@ -19,14 +23,20 @@ on:
         description: Commit signatures back to the calling branch.
         type: boolean
         default: true
+    secrets:
+      approval-private-key:
+        description: Organization approval EC private key PEM; required for key/certificate.
+        required: false
+      approval-certificate:
+        description: Signing certificate PEM for certificate method.
+        required: false
+      approval-certificate-chain:
+        description: Dedicated approval CA bundle PEM for certificate method.
+        required: false
     outputs:
       signed:
         description: Space separated skill folders that were signed.
         value: ${{ jobs.approve.outputs.signed }}
-
-permissions:
-  contents: write
-  id-token: write
 
 concurrency:
   group: skillseal-approve-${{ github.workflow }}-${{ github.ref }}
@@ -55,6 +65,10 @@ jobs:
         # Pin this and the caller's workflow reference to reviewed SHAs for production.
         uses: azurekid/skillseal@main
         with:
+          signing-method: ${{ inputs.signing-method }}
+          approval-private-key: ${{ secrets.approval-private-key }}
+          approval-certificate: ${{ secrets.approval-certificate }}
+          approval-certificate-chain: ${{ secrets.approval-certificate-chain }}
           skills: ${{ inputs.skills }}
           scan: ${{ inputs.scan }}
           only-changed: ${{ inputs.only-changed }}

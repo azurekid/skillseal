@@ -1,11 +1,20 @@
 name: skillseal sign
-description: Scan agent skill folders and sign the clean ones with Sigstore (OpenSSF Model Signing format).
+description: Scan and sign agent skills with an organization approval authority or Sigstore.
 author: azurekid
 branding:
   icon: shield
   color: green
 
 inputs:
+  signing-method:
+    description: "sigstore (keyless), key (organization EC key), or certificate (organization PKI)."
+    default: "sigstore"
+  approval-private-key:
+    description: Unencrypted EC private key PEM from an explicitly passed GitHub secret. Never commit it.
+  approval-certificate:
+    description: Signing certificate PEM, required for certificate method.
+  approval-certificate-chain:
+    description: Dedicated approval CA certificate bundle PEM, required for certificate method.
   skills:
     description: Newline or space separated list of skill folders, or glob patterns (for example "skills/*").
     required: true
@@ -52,62 +61,9 @@ runs:
         SCAN: ${{ inputs.scan }}
         ALLOW_NO_SCAN: ${{ inputs.allow-no-scan }}
         ONLY_CHANGED: ${{ inputs.only-changed }}
+        SIGNING_METHOD: ${{ inputs.signing-method }}
+        APPROVAL_PRIVATE_KEY: ${{ inputs.approval-private-key }}
+        APPROVAL_CERTIFICATE: ${{ inputs.approval-certificate }}
+        APPROVAL_CERTIFICATE_CHAIN: ${{ inputs.approval-certificate-chain }}
       run: |
-        set -euo pipefail
-        shopt -s nullglob
-        if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
-          echo "::error::Sigstore signing needs 'permissions: id-token: write' on the job."
-          exit 1
-        fi
-        scan_args=()
-        if [ -n "$SCAN" ]; then
-          scan_args=(--scan "$SCAN")
-        elif [ "$ALLOW_NO_SCAN" = "true" ]; then
-          scan_args=(--no-scan)
-        else
-          echo "::error::Set the 'scan' input (or allow-no-scan: true)."
-          exit 1
-        fi
-        # Verify against our own identity so unchanged skills are skipped.
-        policy="$RUNNER_TEMP/skillseal-self.json"
-        python - "$policy" <<'PY'
-        import base64
-        import json
-        import os
-        import sys
-        from sigstore.oidc import detect_credential
-        token = detect_credential()
-        if not token:
-            raise RuntimeError("GitHub OIDC token unavailable")
-        # This is a policy hint, not authentication; verification checks Fulcio's certificate.
-        payload = token.split(".")[1]
-        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
-        identity = "https://github.com/" + claims["job_workflow_ref"]
-        caller = "https://github.com/" + os.environ["GITHUB_WORKFLOW_REF"]
-        signer = {"name": "self", "type": "sigstore", "identity": identity,
-                  "issuer": "https://token.actions.githubusercontent.com", "github_workflow": caller}
-        with open(sys.argv[1], "w", encoding="utf-8") as file:
-            json.dump({"trusted_signers": [signer]}, file)
-        print(f"Signing identity: {identity}")
-        print(f"Caller workflow: {caller}")
-        PY
-        signed=()
-        failed=0
-        for pattern in $SKILLS; do
-          for dir in $pattern; do
-            [ -f "$dir/SKILL.md" ] || continue
-            if [ "$ONLY_CHANGED" = "true" ] && skillseal verify --no-cache --policy "$policy" "$dir" >/dev/null 2>&1; then
-              echo "unchanged: $dir"
-              continue
-            fi
-            if skillseal sign "${scan_args[@]}" "$dir"; then
-              skillseal verify --no-cache --policy "$policy" "$dir"
-              signed+=("$dir")
-            else
-              failed=1
-            fi
-          done
-        done
-        echo "signed=${signed[*]}" >> "$GITHUB_OUTPUT"
-        echo "Signed ${#signed[@]} skill(s)"
-        exit $failed
+        python -m skillseal.action

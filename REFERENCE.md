@@ -120,6 +120,12 @@ signers; it does not automatically trust all certificates in an OS store.
 Native stores differ across Windows, macOS, Linux distributions, and Python
 builds. A TLS trust anchor is not automatically an authorized skill publisher.
 
+The GitHub action supports `signing-method: key` or `certificate` with PEM
+credentials passed explicitly from GitHub secrets. The reusable approval
+workflow defaults to `key`; the composite action defaults to `sigstore` for
+compatibility. Organization approval policies authorize the key/anchor, not the
+GitHub workflow. See [setup](APPROVAL.md#configure-the-organization-approval-authority).
+
 The inspected `model-signing` 1.1.1 certificate verifier uses `certifi` when
 no chain is supplied, not a portable native-store interface. It checks the
 chain at the signing certificate's `notBefore` time. That is not proof of a

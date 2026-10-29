@@ -1,9 +1,7 @@
-# Approve skills in the configured repository locations with Sigstore.
+# Approve skills using your organization's approval key.
 # Copy to .github/workflows/approve-skills.yml in the repository that holds your skills.
 #
-# Trust it on developer machines with:
-#   skillseal init --github-workflow OWNER/REPO/.github/workflows/approve-skills.yml@refs/heads/main \
-#     --reusable-workflow azurekid/skillseal/.github/workflows/approve-skills.yml@refs/heads/main
+# Distribute policy.json and the approval public key to developer machines.
 name: approve-skills
 
 on:
@@ -20,13 +18,13 @@ on:
 
 permissions:
   contents: write   # commit the skill.oms.sig files back
-  id-token: write   # Sigstore keyless signing
 
 jobs:
   approve:
     # Development example; pin a reviewed commit SHA in production.
     uses: azurekid/skillseal/.github/workflows/approve-skills.yml@main
     with:
+      signing-method: key
       skills: |
         skills/*
         .claude/skills/*
@@ -34,3 +32,5 @@ jobs:
         .github/skills/*
         .gemini/skills/*
         .opencode/skills/*
+    secrets:
+      approval-private-key: ${{ secrets.SKILLSEAL_APPROVAL_PRIVATE_KEY }}

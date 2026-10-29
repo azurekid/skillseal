@@ -1,0 +1,12 @@
+{
+  "mode": "audit",
+  "allow_repo_signers": false,
+  "trusted_signers": [
+    {
+      "name": "Organization skill approval",
+      "type": "public_key",
+      "public_key": "approval.pub"
+    }
+  ],
+  "revoked_skills": {}
+}

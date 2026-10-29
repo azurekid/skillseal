@@ -2,6 +2,12 @@
 
 ## 0.3.1 (unreleased)
 
+- Support organization approval keys and dedicated certificate anchors in the
+  action and reusable workflow, with explicitly passed GitHub secrets.
+- Make organization approval the recommended setup and the reusable workflow's
+  default. Keep the composite action's keyless default for compatibility.
+- Scan before writing private credentials, exclude PEM inputs from scanner
+  subprocesses, verify produced signatures, and clean temporary credential files.
 - Add a reusable approval workflow and a small caller example for skills repos.
 - Bind shared-workflow trust to the caller's signed Fulcio Build Config URI;
   require upgraded verifiers and do not trust a shared identity on its own.

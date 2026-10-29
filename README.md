@@ -61,6 +61,11 @@ policy. A valid signature alone never grants trust. Withdraw a release using
 publisher from the trusted signers. Updated policies take effect on the next
 check, including previously cached approvals.
 
+For managed teams, configure one organization approval public key or dedicated
+CA in that policy. GitHub Actions signs reviewed skills using the corresponding
+protected private key; endpoints do not need to trust individual workflows.
+See [organization approval setup](APPROVAL.md#configure-the-organization-approval-authority).
+
 Run the [offline trust and revocation lab](examples/TRUST-LAB.md), or follow the
 [emergency revocation runbook](APPROVAL.md#emergency-trust-revocation). Policy
 distribution is your responsibility: offline devices cannot learn about a new
@@ -69,7 +74,8 @@ revocation until their local policy is updated.
 For GitHub approval, use the [small caller workflow](examples/approve-skills.yml)
 in your skills repository. It delegates to Skillseal's
 [reusable approval workflow](.github/workflows/approve-skills.yml). Follow the
-[setup and caller-bound trust instructions](APPROVAL.md#2-add-the-approval-workflow);
+[setup instructions](APPROVAL.md#2-add-the-approval-workflow).
+The shared workflow defaults to organization-key approval. Optional keyless
 shared-workflow verification requires a version newer than 0.3.0.
 
 ## Read the guide you need

@@ -105,9 +105,27 @@ Check that it works with `skillseal --version`. If the command is not found, run
 
 ### Step 2: Tell skillseal whom to trust
 
-Choose one route: create a policy with your team's approval workflow, or copy a policy your team already prepared. The [approval guide](APPROVAL.md) explains what your team lead needs to set up.
+**Recommended for teams:** copy a reviewed organization policy and public key
+or dedicated certificate anchor. GitHub Actions signs with your organization's
+approval authority; developers do not need workflow trust configuration.
+The [approval guide](APPROVAL.md#configure-the-organization-approval-authority)
+explains the signing setup.
 
-#### Create a policy
+#### Organization approval configuration
+
+Use the [public-key policy example](examples/policies/organization-key.json)
+with your organization's `approval.pub`, or the
+[certificate policy example](examples/policies/organization-certificate.json)
+with `approval-ca.pem`. Copy the chosen example as `policy.json` alongside its
+public trust file using [the instructions below](#use-a-policy-your-team-gave-you).
+Obtain both through a trusted administrative channel, not from an untrusted
+skill's repository. These files authorize your organization's approvals across
+all projects on that machine. Never copy the approval private key.
+
+Skip the optional workflow configuration below and continue to step 3 after
+installing the policy. Start in audit mode; switch to enforce in step 5.
+
+#### Optional: create a keyless workflow policy
 
 The value uses this format:
 
@@ -127,7 +145,7 @@ OWNER/REPOSITORY/.github/workflows/WORKFLOW-FILE.yml@refs/heads/BRANCH
 Create it using the [small reusable-workflow caller](examples/approve-skills.yml)
 and the [approval setup guide](APPROVAL.md#2-add-the-approval-workflow).
 
-**If your workflow calls Skillseal's reusable workflow**, configure both its
+**If your workflow uses `signing-method: sigstore` through the reusable workflow**, configure both its
 identity and your caller:
 
 ```bash
@@ -163,7 +181,8 @@ This command trusts signatures from that exact workflow identity. It does **not*
 **No. Configure the trusted signer once per developer user on each machine, not once per project.** With user-scope agent hooks installed in step 4, the same policy is used across projects.
 
 * **One central approval workflow:** trust it once. Skills it signs can be copied into many repositories or user skill folders without another trust entry. Copy the complete signed folder, including `skill.oms.sig`, without changing its files.
-* **Different repositories sign their own skills:** each distinct signing workflow identity you want to trust needs its own entry in `trusted_signers`. This is a policy update, not another installation in every project.
+* **Organization approval:** repositories using the same approval key or dedicated CA need no additional endpoint trust entries.
+* **Different keyless workflows sign skills:** each distinct workflow identity you want to trust needs its own entry in `trusted_signers`. This is a policy update, not another installation in every project.
 * **A repository only contains copies of signed skills:** no additional signer entry is needed. The signature's signer matters, not the repository you copied the skill from.
 * **A skill has no signature:** naming its repository in the policy does not approve it. It must first be signed by a trusted signer.
 

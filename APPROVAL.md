@@ -54,11 +54,11 @@ on:
   workflow_dispatch:
 permissions:
   contents: write     # commit skill.oms.sig
-  id-token: write     # Sigstore keyless signing
 jobs:
   approve:
     uses: azurekid/skillseal/.github/workflows/approve-skills.yml@main
     with:
+      signing-method: key
       skills: |
         skills/*
         .claude/skills/*
@@ -66,6 +66,8 @@ jobs:
         .github/skills/*
         .gemini/skills/*
         .opencode/skills/*
+    secrets:
+      approval-private-key: ${{ secrets.SKILLSEAL_APPROVAL_PRIVATE_KEY }}
 ```
 
 Keep the push `paths` filters and `skills` patterns in sync when adding custom
@@ -81,9 +83,9 @@ requires explicit `skill_roots` configuration if you want Skillseal to check
 it. GitHub CI only signs checked-out repository files, not developers' home
 directories; distribute signed skills to those locations afterward.
 
-This development example requires the post-0.3.0 changes on `main`; `v0.3.0`
-does not contain the reusable workflow or caller-bound verification.
-Upgrade developer installations to a version containing these changes too.
+This development example requires the organization-signing changes on `main`;
+older released actions do not accept these credentials. Existing verifiers
+already support the public-key and certificate trust policies below.
 For production, pin both the caller's reusable-workflow reference and the action
 reference inside that shared workflow to reviewed commits. Pinning the outer
 workflow does not pin an inner `uses: ...@main`.
@@ -91,8 +93,9 @@ workflow does not pin an inner `uses: ...@main`.
 | Input | Default | Meaning |
 | --- | --- | --- |
 | `skills` | Required | Space/newline separated folders or glob patterns |
+| `signing-method` | `key` | Organization EC key; alternatively `certificate` or optional `sigstore` |
 | `scan` | `skillseal scan --fail-on HIGH {path}` | Nonzero exit blocks signing |
-| `only-changed` | `true` | Skip signatures still valid for this signer and caller |
+| `only-changed` | `true` | Skip signing when the current authority still verifies the signature; scanning still runs |
 | `commit-signatures` | `true` | Commit signatures to the caller's branch |
 
 The `signed` workflow output lists signed skill folders. Empty `scan` is rejected;
@@ -106,18 +109,109 @@ token to push signature commits; otherwise pushing fails explicitly. Do not
 weaken branch protection just to bypass this: use a reviewed custom PR-based
 publishing workflow where required.
 
+#### Configure the organization approval authority
+
+Generate one approval key in a secure administrative environment (OpenSSL):
+
+```bash
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out approval-private.pem
+chmod 600 approval-private.pem
+openssl pkey -in approval-private.pem -pubout -out approval.pub
+```
+
+Upload `approval-private.pem` as the GitHub Actions secret
+`SKILLSEAL_APPROVAL_PRIVATE_KEY`. Use a restricted organization secret shared
+only with approved signing repositories, or a repository secret. Never commit
+the private key or distribute it to developer machines. Protect workflow and
+scanner changes with review rules: anyone able to run arbitrary code in a job
+receiving this secret can steal the key. Prefer ephemeral hosted runners; this
+is not HSM-backed signing or isolation from malicious runner code.
+
+The action removes PEM inputs from the environment before launching scanners,
+scans before writing key files, writes temporary credential files with restricted
+permissions, and removes them on normal success or failure. Forced runner
+termination can prevent cleanup; do not rely on deletion as secure erasure.
+Scanners still run on the signing runner, so only use reviewed scanners.
+
+Distribute only the public key and a reviewed policy as described below.
+The same authority can approve skills in multiple repositories without adding
+workflow trust entries to endpoints.
+
+For certificate signing, obtain an EC signing certificate and matching private
+key from your approved PKI. Use a dedicated skill-approval CA, not your complete
+OS certificate store. Change the caller to:
+
+```yaml
+    with:
+      signing-method: certificate
+      skills: ".claude/skills/* .agents/skills/* .github/skills/*"
+    secrets:
+      approval-private-key: ${{ secrets.SKILLSEAL_APPROVAL_PRIVATE_KEY }}
+      approval-certificate: ${{ secrets.SKILLSEAL_APPROVAL_CERTIFICATE }}
+      approval-certificate-chain: ${{ secrets.SKILLSEAL_APPROVAL_CERTIFICATE_CHAIN }}
+```
+
+Pass the leaf certificate as PEM and the approved CA chain as a concatenated
+PEM bundle. No `id-token` permission is required for key/certificate signing.
+The lower-level composite action accepts the same names as inputs but keeps
+`signing-method: sigstore` as its default for backward compatibility.
+
 On every push to `main` the workflow:
 
 1. runs Skillseal's heuristic checks on each skill folder (`{path}` is replaced by the folder; exit code 0 means no findings at or above the selected severity),
-2. signs every clean skill with Sigstore and verifies both the shared signing
-   identity and the caller's signed workflow claim,
+2. signs accepted skills using the configured organization key or certificate
+   and verifies the resulting signatures against that authority,
 3. the last step commits `skill.oms.sig` next to each `SKILL.md`.
 
 The built-in scan is a small heuristic check for obvious prompt-injection phrases and risky shell/network commands. It can miss harmful content and can flag benign examples; it is not a safety guarantee. You can also supply another scanner. If scanning fails, the skill is not signed. Want to sign without a scanner? You must say so with `allow-no-scan: true`.
 
 A signature proves **who approved** a skill and that it **did not change**. It does not prove the skill is safe. That is the job of the scan, and of a human review before merge.
 
-### 3. Give your developers the trust command
+### 3. Distribute the organization trust policy
+
+No `init` command or workflow identity is required. Distribute
+[`organization-key.json`](examples/policies/organization-key.json) as
+`policy.json`, with `approval.pub` beside it in the user/system policy directory.
+The policy contains:
+
+```json
+{
+  "mode": "audit",
+  "allow_repo_signers": false,
+  "trusted_signers": [
+    {
+      "name": "Organization skill approval",
+      "type": "public_key",
+      "public_key": "approval.pub"
+    }
+  ],
+  "revoked_skills": {}
+}
+```
+
+For PKI, distribute the
+[`organization-certificate.json`](examples/policies/organization-certificate.json)
+policy and `approval-ca.pem` instead. Use the
+[policy copy instructions](GETTING-STARTED.md#use-a-policy-your-team-gave-you).
+Start in audit mode and switch to enforce after checking the deployment.
+Do not distribute private keys.
+
+Workflow renames and additional signing repositories do not change endpoint
+trust while they use the same authority. Each authorized repository can approve
+any skill: restrict secret access accordingly. Rotate the key by distributing a
+new public trust entry, switching signing credentials, and removing the old
+entry after migration. For compromise, remove old trust immediately; follow the
+[revocation runbook](#emergency-trust-revocation).
+
+Signing replaces the root `skill.oms.sig`; organizational approval does not
+preserve a separate vendor signature. Verify vendor provenance before approval
+and retain that evidence outside the skill folder if required.
+
+### Optional: keyless workflow trust
+
+If you prefer no persistent private key, set `signing-method: sigstore`, remove
+the `secrets` mapping, and grant `id-token: write` in the caller's permissions.
+For this mode only, configure workflow-based trust:
 
 ```bash
 skillseal init \
