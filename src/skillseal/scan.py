@@ -44,7 +44,7 @@ _RULES = (
     )),
 )
 
-_SEVERITY_RANK = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
+_SEVERITY_RANK = {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "CRITICAL": 4}
 
 
 def scan_skill(skill_dir: Path) -> list[Finding]:

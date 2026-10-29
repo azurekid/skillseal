@@ -55,6 +55,10 @@ Do not remove protections just to make it pass.
 
 Review skill and workflow changes before they reach the signing branch.
 The included scan helps spot common problems; it does not replace review.
+Scan output appears in the approval step. Failed scans remove existing approval
+signatures and commit those removals while leaving the workflow failed.
+For optional remote scanning and upgrading older workflows, see
+[AgentLens scanning](ADMINISTRATION.md#optional-agentlens-scanning).
 
 ## 4. Connect your machine
 

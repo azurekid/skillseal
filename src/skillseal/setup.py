@@ -317,18 +317,20 @@ def _workflow(branch: str) -> bytes:
         f"jobs:\n  approve:\n    if: github.ref == 'refs/heads/{branch}'\n"
         "    runs-on: ubuntu-latest\n    steps:\n"
         "      - uses: actions/checkout@v4\n"
-        f"      - uses: azurekid/skillseal@{ACTION_REF}\n"
+        f"      - id: seal\n        uses: azurekid/skillseal@{ACTION_REF}\n"
         "        with:\n          signing-method: key\n"
         '          scan: "skillseal scan --fail-on HIGH {path}"\n'
         "          approval-private-key: ${{ secrets.SKILLSEAL_APPROVAL_PRIVATE_KEY }}\n"
         f"          skills: |\n{patterns}\n"
-        "      - name: Commit signatures\n        env:\n          BRANCH: ${{ github.ref_name }}\n"
+        "      - name: Commit signatures\n"
+        "        if: ${{ !cancelled() && (steps.seal.outputs.signed != '' || steps.seal.outputs.removed != '') }}\n"
+        "        env:\n          BRANCH: ${{ github.ref_name }}\n"
         "        run: |\n          set -euo pipefail\n"
         "          git config user.name 'skillseal[bot]'\n"
         "          git config user.email 'skillseal@users.noreply.github.com'\n"
-        "          git add -- ':(glob)**/skill.oms.sig'\n"
+        "          git add -A -- ':(glob)**/skill.oms.sig'\n"
         "          if git diff --cached --quiet; then exit 0; fi\n"
-        "          git commit -m 'Sign approved skills'\n"
+        "          git commit -m 'Update skill approval signatures'\n"
         '          git push origin "HEAD:refs/heads/$BRANCH"\n'
     ).encode()
 

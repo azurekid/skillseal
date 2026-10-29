@@ -11,9 +11,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-from . import SKILL_FILE
+from . import SIGNATURE_FILE, SKILL_FILE
 from .policy import GITHUB_ISSUER, Policy, Signer
-from .sign import SignError, run_scanner
+from .sign import SignError, remove_signature, run_scanner
 from .verify import verify_skill
 
 _CREDENTIALS = ("APPROVAL_PRIVATE_KEY", "APPROVAL_CERTIFICATE", "APPROVAL_CERTIFICATE_CHAIN")
@@ -29,6 +29,13 @@ def _write(root: Path, name: str, value: str) -> Path:
     return path
 
 
+def _output(name: str, skills: list[str]) -> None:
+    output = os.environ.get("GITHUB_OUTPUT")
+    if output:
+        with open(output, "a", encoding="utf-8") as file:
+            file.write(name + "=" + " ".join(skills) + "\n")
+
+
 def run() -> int:
     credentials = {name: os.environ.pop(name, "") for name in _CREDENTIALS}
     os.environ.pop("SKILLSEAL_SCANNER", None)
@@ -40,18 +47,44 @@ def run() -> int:
         raise ValueError("set scan or explicitly set allow-no-scan: true")
     skills = sorted({
         path for pattern in os.environ.get("SKILLS", "").split()
-        for path in glob.glob(pattern) if (Path(path) / SKILL_FILE).is_file()
+        for path in glob.glob(pattern)
+        if Path(path).is_dir() and (
+            (Path(path) / SKILL_FILE).is_file()
+            or (Path(path) / SIGNATURE_FILE).exists()
+            or (Path(path) / SIGNATURE_FILE).is_symlink()
+        )
     })
     if not skills:
         raise ValueError("no skill folders matched skills")
 
     # Scan before writing any private key to disk. Scanners receive no PEM inputs.
-    for skill in skills:
-        if scan:
-            ok, output = run_scanner(scan, Path(skill))
-            if not ok:
-                print(f"::error::Scanner blocked {skill}\n{output[-4000:]}", file=sys.stderr)
-                return 1
+    removed: list[str] = []
+    blocked = False
+    try:
+        for skill in skills:
+            path = Path(skill)
+            try:
+                if not (path / SKILL_FILE).is_file():
+                    raise SignError(f"{skill} has no {SKILL_FILE}")
+                if not scan:
+                    continue
+                print(f"Scanning: {skill}", flush=True)
+                ok, output = run_scanner(scan, path)
+                if output:
+                    print(output)
+                if ok:
+                    print(f"Scan passed: {skill}")
+                    continue
+                print(f"::error::Scanner blocked {skill}", file=sys.stderr)
+            except SignError as exc:
+                print(f"::error::Scanner failed for {skill}: {exc}", file=sys.stderr)
+            blocked = True
+            if remove_signature(path):
+                removed.append(skill)
+    finally:
+        _output("removed", removed)
+    if blocked:
+        return 1
 
     with tempfile.TemporaryDirectory(prefix="skillseal-sign-", dir=os.environ.get("RUNNER_TEMP")) as temp:
         root = Path(temp)
@@ -112,15 +145,23 @@ def run() -> int:
                 continue
             # Scan already passed; no scanner is run while private material exists.
             command = [sys.executable, "-m", "skillseal", "sign", "--no-scan", *args, "--", skill]
-            subprocess.run(command, check=True)
-            result = verify_skill(path, policy, use_cache=False)
-            if not result.ok:
-                raise ValueError(f"new signature failed verification for {skill}: {result.reasons}")
+            signature = path / SIGNATURE_FILE
+            had_signature = signature.exists() or signature.is_symlink()
+            try:
+                subprocess.run(command, check=True)
+                result = verify_skill(path, policy, use_cache=False)
+                if not result.ok:
+                    raise ValueError(f"new signature failed verification for {skill}: {result.reasons}")
+            except (subprocess.CalledProcessError, ValueError):
+                removed_now = remove_signature(path)
+                if had_signature or removed_now:
+                    removed.append(skill)
+                    _output("removed", removed)
+                raise
             signed.append(skill)
-        output = os.environ.get("GITHUB_OUTPUT")
-        if output:
-            with open(output, "a", encoding="utf-8") as file:
-                file.write("signed=" + " ".join(signed) + "\n")
+            _output("signed", signed)
+        if not signed:
+            _output("signed", signed)
         print(f"Signed {len(signed)} skill(s) using {method}")
     return 0
 

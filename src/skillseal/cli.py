@@ -10,12 +10,13 @@ import sys
 from pathlib import Path
 
 from . import SKILL_FILE, __version__, cache
+from .agentlens import scan_agentlens
 from .discover import AGENTS, discover
 from .hooks import run_hook
 from .install import install, uninstall
 from .policy import GITHUB_ISSUER, MODES, Policy, PolicyError, load_policy, repo_policy_path, user_policy_path
 from .scan import ScanError, scan_exceeds_threshold, scan_skill
-from .sign import SignError, run_scanner, sign_skill
+from .sign import SignError, remove_signature, run_scanner, sign_skill
 from .verify import Result, _walk, verify_skill
 
 
@@ -150,8 +151,13 @@ def cmd_sign(a) -> int:
         skill = Path(d)
         try:
             if scanner:
-                ok, out = run_scanner(scanner, skill)
+                try:
+                    ok, out = run_scanner(scanner, skill)
+                except SignError:
+                    remove_signature(skill)
+                    raise
                 if not ok:
+                    remove_signature(skill)
                     print(f"[BLOCKED] {skill}: scanner reported findings, not signing\n{out[-4000:]}", file=sys.stderr)
                     failed += 1
                     continue
@@ -180,13 +186,14 @@ def cmd_scan(a) -> int:
     for directory in a.dirs:
         skill = Path(directory)
         try:
-            findings = scan_skill(skill)
+            findings = scan_agentlens(skill, a.agentlens_url) if a.agentlens_url else scan_skill(skill)
         except ScanError as exc:
             print(f"[ERROR] {exc}", file=sys.stderr)
             errors = True
             continue
         if not findings:
-            print(f"[CLEAN] {skill}: no heuristic findings")
+            source = "AgentLens" if a.agentlens_url else "heuristic"
+            print(f"[CLEAN] {skill}: no {source} findings")
             continue
         for finding in findings:
             print(
@@ -355,10 +362,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--staging", action="store_true", help="use Sigstore staging (testing only)")
     s.set_defaults(func=cmd_sign)
 
-    s = sub.add_parser("scan", help="heuristically scan skill folders for common risky content")
+    s = sub.add_parser("scan", help="scan skill folders locally or explicitly upload to AgentLens")
     s.add_argument("dirs", nargs="+")
-    s.add_argument("--fail-on", choices=["LOW", "MEDIUM", "HIGH"], default="MEDIUM",
+    s.add_argument("--fail-on", choices=["LOW", "MEDIUM", "HIGH", "CRITICAL"], default="MEDIUM",
                    help="exit 1 when a finding at or above this severity is found (default: MEDIUM)")
+    s.add_argument("--agentlens-url", metavar="HTTPS_URL",
+                   help="opt in to uploading skill files to this AgentLens base URL; review its retention policy first")
     s.set_defaults(func=cmd_scan)
 
     s = sub.add_parser("verify", help="verify skill folders against the policy")

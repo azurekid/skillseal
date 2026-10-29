@@ -20,7 +20,7 @@ inputs:
     required: true
   scan:
     description: >
-      Scanner command. Exit code 0 means clean, anything else blocks signing.
+      Scanner command. Exit code 0 means clean, anything else blocks signing and removes any previous signature.
       "{path}" is replaced by the skill folder. Leave empty only together with allow-no-scan.
     required: false
     default: ""
@@ -41,6 +41,9 @@ outputs:
   signed:
     description: Space separated list of skill folders that were (re)signed.
     value: ${{ steps.sign.outputs.signed }}
+  removed:
+    description: Space separated skill folders whose approval signature was removed after a rejected or failed scan.
+    value: ${{ steps.sign.outputs.removed }}
 
 runs:
   using: composite

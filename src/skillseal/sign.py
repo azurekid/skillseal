@@ -15,15 +15,30 @@ class SignError(RuntimeError):
     pass
 
 
+def remove_signature(skill_dir: Path) -> bool:
+    sig = skill_dir / SIGNATURE_FILE
+    try:
+        sig.unlink()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise SignError(f"cannot remove {sig}: {exc}") from exc
+    print(f"[REMOVED] {sig}")
+    return True
+
+
 def run_scanner(command: str, skill_dir: Path, timeout: int = 300) -> tuple[bool, str]:
     """Run a pluggable scanner. `{path}` in the command is replaced by the folder.
 
     Exit code 0 means clean; anything else blocks signing.
     """
-    if os.name == "nt":
-        argv = [a[1:-1] if len(a) > 1 and a[0] == a[-1] == '"' else a for a in shlex.split(command, posix=False)]
-    else:
-        argv = shlex.split(command)
+    try:
+        if os.name == "nt":
+            argv = [a[1:-1] if len(a) > 1 and a[0] == a[-1] == '"' else a for a in shlex.split(command, posix=False)]
+        else:
+            argv = shlex.split(command)
+    except ValueError as exc:
+        raise SignError(f"invalid scanner command: {exc}") from exc
     if not argv:
         raise SignError("empty scanner command")
     if any("{path}" in a for a in argv):
@@ -36,6 +51,8 @@ def run_scanner(command: str, skill_dir: Path, timeout: int = 300) -> tuple[bool
         raise SignError(f"scanner not found: {argv[0]}") from exc
     except subprocess.TimeoutExpired as exc:
         raise SignError(f"scanner timed out after {timeout}s") from exc
+    except OSError as exc:
+        raise SignError(f"cannot run scanner {argv[0]}: {exc}") from exc
     return proc.returncode == 0, (proc.stdout + proc.stderr).strip()
 
 

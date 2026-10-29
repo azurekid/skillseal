@@ -49,6 +49,25 @@ def test_scan_gate_blocks_signing(tmp_path, keys):
     passing = f'{sys.executable} -c "import sys; sys.exit(0)" {{path}}'
     assert main(["sign", "--scan", passing, "--method", "key", "--private-key", str(keys[0]), str(skill)]) == 0
     assert (skill / "skill.oms.sig").is_file()
+    assert main(["sign", "--scan", failing, "--method", "key", "--private-key", str(keys[0]), str(skill)]) == 1
+    assert not (skill / "skill.oms.sig").exists()
+
+
+def test_unavailable_scanner_removes_previous_signature(tmp_path, keys):
+    skill = make_skill(tmp_path)
+    signature = skill / "skill.oms.sig"
+    signature.write_text("previous approval")
+    assert main(["sign", "--scan", "missing-skillseal-test-scanner", str(skill)]) == 1
+    assert not signature.exists()
+
+
+def test_signing_configuration_error_preserves_previous_approval(tmp_path, keys):
+    skill = make_skill(tmp_path)
+    assert main(["sign", "--no-scan", "--method", "key", "--private-key", str(keys[0]), str(skill)]) == 0
+    signature = skill / "skill.oms.sig"
+    previous = signature.read_bytes()
+    assert main(["sign", "--no-scan", "--method", "key", str(skill)]) == 1
+    assert signature.read_bytes() == previous
 
 
 def test_builtin_scan_reports_high_finding_and_fails(tmp_path, capsys):

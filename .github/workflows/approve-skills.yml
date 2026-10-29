@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       scan:
-        description: Scanner command; nonzero exit blocks signing.
+        description: Scanner command; nonzero exit blocks signing and removes previous approval.
         type: string
         default: "skillseal scan --fail-on HIGH {path}"
       only-changed:
@@ -37,6 +37,9 @@ on:
       signed:
         description: Space separated skill folders that were signed.
         value: ${{ jobs.approve.outputs.signed }}
+      removed:
+        description: Space separated skill folders whose approval signature was removed.
+        value: ${{ jobs.approve.outputs.removed }}
 
 concurrency:
   group: skillseal-approve-${{ github.workflow }}-${{ github.ref }}
@@ -47,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       signed: ${{ steps.seal.outputs.signed }}
+      removed: ${{ steps.seal.outputs.removed }}
     steps:
       - name: Require a branch event, not a pull request
         env:
@@ -74,17 +78,17 @@ jobs:
           only-changed: ${{ inputs.only-changed }}
 
       - name: Commit signatures
-        if: inputs.commit-signatures && steps.seal.outputs.signed != ''
+        if: ${{ !cancelled() && inputs.commit-signatures && (steps.seal.outputs.signed != '' || steps.seal.outputs.removed != '') }}
         env:
           BRANCH: ${{ github.ref_name }}
         run: |
           set -euo pipefail
           git config user.name "skillseal[bot]"
           git config user.email "skillseal@users.noreply.github.com"
-          git add -- ':(glob)**/skill.oms.sig'
+          git add -A -- ':(glob)**/skill.oms.sig'
           if git diff --cached --quiet; then
             echo "No signature changes to commit."
             exit 0
           fi
-          git commit -m "Sign approved skills"
+          git commit -m "Update skill approval signatures"
           git push origin "HEAD:refs/heads/$BRANCH"

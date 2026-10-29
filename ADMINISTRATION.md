@@ -102,7 +102,8 @@ workflow does not pin an inner `uses: ...@main`.
 | `only-changed` | `true` | Skip signing when the current authority still verifies the signature; scanning still runs |
 | `commit-signatures` | `true` | Commit signatures to the caller's branch |
 
-The `signed` workflow output lists signed skill folders. Empty `scan` is rejected;
+The `signed` workflow output lists signed skill folders; `removed` lists folders
+whose previous approval was removed. Empty `scan` is rejected;
 to deliberately sign without scanning, use the lower-level action and its explicit
 `allow-no-scan` option. Custom scanners must already be available on the runner;
 use the lower-level action if you need additional setup steps.
@@ -181,9 +182,70 @@ On every push to `main` the workflow:
    and verifies the resulting signatures against that authority,
 3. the last step commits `skill.oms.sig` next to each `SKILL.md`.
 
-The built-in scan is a small heuristic check for obvious prompt-injection phrases and risky shell/network commands. It can miss harmful content and can flag benign examples; it is not a safety guarantee. You can also supply another scanner. If scanning fails, the skill is not signed. Want to sign without a scanner? You must say so with `allow-no-scan: true`.
+The built-in scan is a small heuristic check for obvious prompt-injection phrases and risky shell/network commands. It can miss harmful content and can flag benign examples; it is not a safety guarantee. Successful scan output is shown even when an unchanged signature is reused.
+
+If any scan rejects a skill or cannot finish (including a missing scanner or
+timeout), no skills are signed in that action run. Each rejected skill loses
+its existing `skill.oms.sig`. A selected folder whose `SKILL.md` was deleted
+also loses its signature. The commit step still runs for signature removals
+when approval fails; the workflow stays failed. `commit-signatures: false`
+leaves deletions only in the checkout. CLI `skillseal sign --scan ...` also
+removes previous approval on a failed scan; standalone `skillseal scan` is
+read-only locally. Deleting a signature does not revoke copies already
+distributed; use the [revocation policy](#emergency-trust-revocation) for those.
+
+Want to sign without a scanner? You must say so with `allow-no-scan: true`.
 
 A signature proves **who approved** a skill and that it **did not change**. It does not prove the skill is safe. That is the job of the scan, and of a human review before merge.
+
+#### Optional AgentLens scanning
+
+Local heuristic scanning remains the default. AgentLens supports multipart
+`POST /api/scan/files`; opt in by setting the scanner command:
+
+```yaml
+    with:
+      scan: >-
+        skillseal scan --agentlens-url https://app-skillvenom-bb6uknnp.azurewebsites.net
+        --fail-on HIGH {path}
+```
+
+Use the same command directly with a skill folder instead of `{path}`.
+The option takes the service's HTTPS base URL, not the API path. It uploads
+the skill's files, including supporting scripts, but excludes signatures and
+Git metadata. No extra scanner package is required. HIGH and CRITICAL findings
+block this example. Service errors, malformed responses, partial inspections,
+skipped files or missing file results also block signing; there is no fallback
+to a local scan. The service limits each skill to 500 files, 256 KiB per file
+and 5 MiB combined. Unsupported files must not be silently treated as scanned.
+
+**Review retention before opting in.** This AgentLens deployment warns that
+HIGH/CRITICAL submissions publish fingerprints, self-declared skill names,
+redacted finding excerpts and assessment summaries indefinitely, including
+private uploads. It retains high-risk originals privately for 30 days.
+Redaction does not guarantee confidentiality. Only submit material you can
+publish; never include private keys or other confidential files.
+
+Existing workflows are not rewritten by upgrading Skillseal. Update their
+action/workflow pin to a reviewed commit containing this support before using
+`--agentlens-url` or the `removed` output. For custom workflows (including older
+setup-generated workflows), give the signing step `id: seal` and allow the
+signature commit step to run after failure:
+
+```yaml
+      - name: Commit signatures
+        if: ${{ !cancelled() && (steps.seal.outputs.signed != '' || steps.seal.outputs.removed != '') }}
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "skillseal[bot]"
+          git config user.email "skillseal@users.noreply.github.com"
+          git add -A -- ':(glob)**/skill.oms.sig'
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Update skill approval signatures"
+          git push origin "HEAD:refs/heads/$BRANCH"
+```
 
 ### 3. Distribute the organization trust policy
 

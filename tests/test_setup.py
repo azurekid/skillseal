@@ -334,6 +334,9 @@ def test_organization_to_developer_flow(tmp_path, monkeypatch, capsys):
             assert root + "/*" in workflow
     assert f"azurekid/skillseal@{setup.ACTION_REF}" in workflow
     assert "pull_request" not in workflow
+    assert "      - id: seal\n" in workflow
+    assert "!cancelled() && (steps.seal.outputs.signed != '' || steps.seal.outputs.removed != '')" in workflow
+    assert "git add -A -- ':(glob)**/skill.oms.sig'" in workflow
     assert join(bundle, repo) == 0
     assert verify_skill(repo / ".agents/skills/skillseal-welcome", load_policy(), use_cache=False).ok
     assert public == (repo / ".skillseal/approval.pub").read_bytes()

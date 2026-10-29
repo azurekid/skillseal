@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Show successful scanner output, including scans of unchanged skills.
+- Remove existing approval signatures when scans reject a skill or cannot
+  complete, or a selected signed folder loses its `SKILL.md`. Commit signature
+  removals even when the approval step fails.
+- Add opt-in AgentLens file scanning with strict completeness checks and
+  CRITICAL severity support. Keep local heuristic scanning as the default
+  and document the remote service's disclosure and retention behavior.
+
 ## 0.4.3
 
 - Show each effective trusted signer's name, type and key/certificate paths or
