@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.3
 
 - Show each effective trusted signer's name, type and key/certificate paths or
   Sigstore identity constraints in readable `skillseal check` output.
