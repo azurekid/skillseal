@@ -14,6 +14,7 @@ from .discover import AGENTS, discover
 from .hooks import run_hook
 from .install import install, uninstall
 from .policy import GITHUB_ISSUER, MODES, Policy, PolicyError, load_policy, repo_policy_path, user_policy_path
+from .scan import ScanError, scan_exceeds_threshold, scan_skill
 from .sign import SignError, run_scanner, sign_skill
 from .verify import Result, verify_skill
 
@@ -145,6 +146,31 @@ def cmd_sign(a) -> int:
     return 1 if failed else 0
 
 
+def cmd_scan(a) -> int:
+    failed = False
+    errors = False
+    for directory in a.dirs:
+        skill = Path(directory)
+        try:
+            findings = scan_skill(skill)
+        except ScanError as exc:
+            print(f"[ERROR] {exc}", file=sys.stderr)
+            errors = True
+            continue
+        if not findings:
+            print(f"[CLEAN] {skill}: no heuristic findings")
+            continue
+        for finding in findings:
+            print(
+                f"[{finding.severity}] {finding.path}:{finding.line}: "
+                f"{finding.description}"
+            )
+        failed = failed or scan_exceeds_threshold(findings, a.fail_on)
+    if errors:
+        return 2
+    return 1 if failed else 0
+
+
 def cmd_verify(a) -> int:
     policy = load_policy(project=Path.cwd(), explicit=Path(a.policy) if a.policy else None)
     results = [verify_skill(Path(d), policy, use_cache=not a.no_cache) for d in a.dirs]
@@ -230,6 +256,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--staging", action="store_true", help="use Sigstore staging (testing only)")
     s.set_defaults(func=cmd_sign)
 
+    s = sub.add_parser("scan", help="heuristically scan skill folders for common risky content")
+    s.add_argument("dirs", nargs="+")
+    s.add_argument("--fail-on", choices=["LOW", "MEDIUM", "HIGH"], default="MEDIUM",
+                   help="exit 1 when a finding at or above this severity is found (default: MEDIUM)")
+    s.set_defaults(func=cmd_scan)
+
     s = sub.add_parser("verify", help="verify skill folders against the policy")
     s.add_argument("dirs", nargs="+")
     s.add_argument("--policy")
@@ -271,6 +303,9 @@ def main(argv: list[str] | None = None) -> int:
         return args.func(args)
     except PolicyError as exc:
         print(f"policy error: {exc}", file=sys.stderr)
+        return 2
+    except ScanError as exc:
+        print(f"scan error: {exc}", file=sys.stderr)
         return 2
 
 

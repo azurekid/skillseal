@@ -25,18 +25,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Any scanner works: exit code 0 = clean. This one is SkillVenom's CLI.
-      # Pin it (and this action) to a commit SHA in production.
-      - name: Get scanner
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/scan_agents_md.py" \
-            https://raw.githubusercontent.com/azurekid/AgentTrap/main/scan_agents_md.py
-
       - id: seal
         uses: azurekid/skillseal@v0.2.0
         with:
           skills: "skills/*"
-          scan: python ${{ runner.temp }}/scan_agents_md.py --fail-on HIGH {path}
+          scan: skillseal scan --fail-on HIGH {path}
 
       - name: Commit signatures
         if: steps.seal.outputs.signed != ''

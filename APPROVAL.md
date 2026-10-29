@@ -38,7 +38,7 @@ jobs:
         uses: azurekid/skillseal@v0.2.0
         with:
           skills: "skills/*"
-          scan: python scan_agents_md.py --fail-on HIGH {path}
+          scan: skillseal scan --fail-on HIGH {path}
       - if: steps.seal.outputs.signed != ''
         run: |
           git config user.name "skillseal[bot]"
@@ -48,15 +48,15 @@ jobs:
           git push
 ```
 
-The full example also downloads the scanner. Pin the action and the scanner to a commit SHA in production.
+The example uses Skillseal's built-in heuristic scanner. Pin the action to a commit SHA in production.
 
 On every push to `main` the workflow:
 
-1. runs your scanner on each skill folder (`{path}` is replaced by the folder; exit code 0 means clean),
+1. runs Skillseal's heuristic checks on each skill folder (`{path}` is replaced by the folder; exit code 0 means no findings at or above the selected severity),
 2. signs every clean skill with Sigstore, without any key to manage: the identity of the signature **is this workflow**,
 3. the last step commits `skill.oms.sig` next to each `SKILL.md`.
 
-Any scanner works, for example [SkillVenom](https://github.com/azurekid/AgentTrap), [Cisco skill-scanner](https://github.com/cisco-ai-defense/skill-scanner) or [Snyk agent-scan](https://github.com/snyk/agent-scan). If the scanner fails, the skill is not signed. Want to sign without a scanner? You must say so with `allow-no-scan: true`.
+The built-in scan is a small heuristic check for obvious prompt-injection phrases and risky shell/network commands. It can miss harmful content and can flag benign examples; it is not a safety guarantee. You can also supply another scanner. If scanning fails, the skill is not signed. Want to sign without a scanner? You must say so with `allow-no-scan: true`.
 
 A signature proves **who approved** a skill and that it **did not change**. It does not prove the skill is safe. That is the job of the scan, and of a human review before merge.
 
@@ -106,7 +106,8 @@ Developers copy or clone the signed skill folders into one of the skill folders 
 ### Sign without GitHub Actions
 
 ```bash
-skillseal sign --scan "python scan_agents_md.py --fail-on HIGH" skills/deploy     # Sigstore, opens a browser login
+skillseal scan --fail-on HIGH skills/deploy                                      # heuristic scan only
+skillseal sign --scan "skillseal scan --fail-on HIGH" skills/deploy               # Sigstore, opens a browser login
 skillseal sign --no-scan --method key --private-key key.pem skills/deploy        # your own EC key
 skillseal sign --scan "..." --method certificate --private-key k.pem \
   --signing-certificate leaf.pem --certificate-chain ca.pem skills/deploy        # your own PKI

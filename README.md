@@ -51,6 +51,8 @@ In **enforce** mode, any unapproved skill stops tool use through the configured 
 
 A signature proves who signed the files and whether they changed. **It does not prove that the skill is safe.** The quality of your scanning, review and trusted signers still matters.
 
+Skillseal includes a small heuristic scanner for obvious prompt-injection phrases and risky shell/network commands. It can miss harmful content and flag benign examples; it is not a safety guarantee.
+
 ## Read the guide you need
 
 | Guide | What it covers |

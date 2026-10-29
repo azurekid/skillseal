@@ -113,7 +113,8 @@ skillseal raises the bar a lot, but it is not a sandbox:
 * **Copilot hook timeouts fail open** (documented by GitHub). The check is cached and the timeout is 60 seconds, but a hook that hangs lets the call through.
 * **Gemini CLI treats exit code 1 as a warning.** skillseal never uses exit 1 to block there; it returns `{"decision":"deny"}`.
 * **File permissions are not signed.** OMS hashes file content, not the executable bit.
-* **Only skill folders are covered.** Single-file commands such as `.claude/commands/*.md`, and instruction files such as `AGENTS.md` and `CLAUDE.md`, are not. Scan those with a scanner.
+* **Only skill folders are covered.** Single-file commands such as `.claude/commands/*.md`, and instruction files such as `AGENTS.md` and `CLAUDE.md`, are not covered by signature verification.
+* **The built-in scanner is heuristic.** `skillseal scan` checks for a small set of obvious prompt-injection and risky shell/network patterns. It can miss harmful content and flag benign examples; do not treat it as a safety guarantee.
 * **Hooks are Preview in VS Code**, and the legacy Local harness is not supported.
 * **OpenClaw is not tested.** Copilot CLI and OpenCode were tested end to end (blocked with an unsigned skill, allowed with a signed one). Real NVIDIA-signed skills verify with their root certificate and fail after any edit.
 * **The cache is protected by normal file permissions** (`0600`). Someone who can write to your home folder can already change your agent config.
@@ -127,7 +128,7 @@ Before building this we checked what already exists (October 2026):
 | --- | --- | --- |
 | [OpenSSF Model Signing (OMS)](https://github.com/sigstore/model-transparency), `model-signing` | Signs a whole folder: a Sigstore bundle with the hash of every file | No agent integration, no trust policy, default config skips `.github/` |
 | [NVIDIA verified skills](https://github.com/NVIDIA/skills) | Ships skills with `skill.oms.sig` (OMS) and a root certificate | Checking is manual (`model_signing verify`); nothing enforces it when the agent runs |
-| [Cisco AI Defense skill-scanner](https://github.com/cisco-ai-defense/skill-scanner), [Snyk agent-scan](https://github.com/snyk/agent-scan), [SkillVenom](https://github.com/azurekid/AgentTrap) | Static scanners for skills and agent files | Scanning only, no signing, no enforcement |
+| [Cisco AI Defense skill-scanner](https://github.com/cisco-ai-defense/skill-scanner), [Snyk agent-scan](https://github.com/snyk/agent-scan) | Static scanners for skills and agent files | Scanning only, no signing, no enforcement |
 | [Trail of Bits mcp-context-protector](https://github.com/trailofbits/mcp-context-protector) | Trust-on-first-use pinning for MCP servers | MCP only, not skills, no central approval |
 | Claude Code plugin marketplaces | `sha` pinning of plugin sources | Pinning at install time only, no signature, no check at load time |
 
@@ -143,6 +144,7 @@ skillseal install    AGENT... [--scope project|user] [--project DIR] [--exe PATH
 skillseal uninstall  AGENT... [--scope project|user] [--project DIR]
 skillseal sign       DIR... (--scan CMD | --no-scan) [--method sigstore|key|certificate]
                      [--private-key PEM] [--signing-certificate PEM] [--certificate-chain PEM ...]
+skillseal scan       DIR... [--fail-on LOW|MEDIUM|HIGH]
 skillseal verify     DIR... [--policy FILE] [--json] [--no-cache]
 skillseal hook       AGENT [EVENT]      # called by the agent, reads the hook JSON on stdin
 ```
