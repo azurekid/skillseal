@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -67,9 +68,9 @@ def test_verify_uses_same_compact_status_format(capsys):
     ]
     _print_results(results, False)
     assert capsys.readouterr().out == (
-        "  OK  /skills/approved\n"
+        f"  OK  {Path('/skills/approved')}\n"
         "    Signer: Organization approval\n"
-        "  REVOKED  /skills/withdrawn\n"
+        f"  REVOKED  {Path('/skills/withdrawn')}\n"
         "    - INC-42: release withdrawn\n"
     )
 

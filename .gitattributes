@@ -1,0 +1,2 @@
+# Signed examples and their public-key fingerprint require byte-exact checkouts.
+examples/starter/** -text
