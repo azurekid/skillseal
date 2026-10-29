@@ -39,7 +39,7 @@ def check(agent: str, cwd: Path, policy: Policy) -> list[Result]:
 
 def explain(failures: list[Result], limit: int = 8) -> str:
     n = len(failures)
-    lines = [f"skillseal: {n} skill{'s' if n != 1 else ''} not approved (unsigned, changed or untrusted signer):"]
+    lines = [f"skillseal: {n} skill{'s' if n != 1 else ''} not approved (unsigned, changed, revoked or untrusted signer):"]
     for r in failures[:limit]:
         why = r.reasons[0] if r.reasons else r.status
         lines.append(f"  - {r.path}: {r.status}: {why}")

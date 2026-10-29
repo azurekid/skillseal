@@ -53,6 +53,19 @@ A signature proves who signed the files and whether they changed. **It does not 
 
 Skillseal includes a small heuristic scanner for obvious prompt-injection phrases and risky shell/network commands. It can miss harmful content and flag benign examples; it is not a safety guarantee.
 
+### Trust and withdraw skills without a server
+
+Configure approved external publishers and internal signers in the same managed
+policy. A valid signature alone never grants trust. Withdraw a release using
+`skillseal digest` and the policy's `revoked_skills`, or remove a compromised
+publisher from the trusted signers. Updated policies take effect on the next
+check, including previously cached approvals.
+
+Run the [offline trust and revocation lab](examples/TRUST-LAB.md), or follow the
+[emergency revocation runbook](APPROVAL.md#emergency-trust-revocation). Policy
+distribution is your responsibility: offline devices cannot learn about a new
+revocation until their local policy is updated.
+
 ## Read the guide you need
 
 | Guide | What it covers |
@@ -60,6 +73,8 @@ Skillseal includes a small heuristic scanner for obvious prompt-injection phrase
 | [Getting started](GETTING-STARTED.md) | Install on Windows, macOS or Linux, set your trust policy, connect your agent, test blocking and troubleshoot |
 | [Approval guide](APPROVAL.md) | Set up scanning and signing, share the policy and distribute signed skills |
 | [Technical reference](REFERENCE.md) | Agent hooks, skill locations, policy precedence, verification rules, limits and commands |
+| [Trust lab](examples/TRUST-LAB.md) | Reproduce internal/external trust, tamper detection, withdrawal, and recovery without a server |
+| [Release notes](CHANGELOG.md) | Changes and validation requirements for the next release |
 
 Using VS Code? Start with [the VS Code instructions](GETTING-STARTED.md#vs-code). Other tools: [Copilot CLI](GETTING-STARTED.md#github-copilot-cli), [Claude Code](GETTING-STARTED.md#claude-code), [Codex](GETTING-STARTED.md#codex-cli), [Gemini](GETTING-STARTED.md#gemini-cli) and [OpenCode](GETTING-STARTED.md#opencode). OpenClaw support is experimental and not tested.
 

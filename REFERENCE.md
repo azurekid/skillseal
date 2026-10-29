@@ -82,6 +82,7 @@ Example ([`examples/policies/user-policy.json`](examples/policies/user-policy.js
 | `trusted_signers` | `sigstore` (identity + issuer), `certificate` (chain of PEM files) or `public_key` (EC PEM). Relative paths are relative to the policy file. |
 | `skill_roots` | Extra folders to search for skills. |
 | `allow_repo_signers` | Let a repository's `.skillseal/policy.json` add signers. Default `false`. |
+| `revoked_skills` | Object mapping lowercase `skillseal digest` SHA256 content identifiers to nonempty incident reasons. Default `{}`. Only the authoritative policy supplies these denials; repository layers cannot add or clear them. |
 
 Where policies are read from:
 
@@ -101,7 +102,34 @@ For each skill folder (a folder with `SKILL.md`):
 
 Note: `model-signing` on its own skips `.github/`, `.gitignore` and `.gitattributes` while verifying, even when the signer hashed them. skillseal passes an explicit hashing config so these files are always checked.
 
-Good results are cached in `~/.cache/skillseal/verified.json`, keyed by the policy, the signature and the hash of every file. So a hook normally answers in milliseconds, and any change to any file means a new full check.
+Good results are cached in `~/.cache/skillseal/verified.json`, keyed by the policy, the signature, configured key/certificate file contents, and the hash of every file. Content revocations are checked before cache hits. Removing a signer or changing its trust file invalidates its old approvals. Every check still hashes local skill files; this is not constant-time verification.
+
+### Certificate trust and operating-system stores
+
+Skillseal deliberately requires explicit certificate-chain files for certificate
+signers; it does not automatically trust all certificates in an OS store.
+Native stores differ across Windows, macOS, Linux distributions, and Python
+builds. A TLS trust anchor is not automatically an authorized skill publisher.
+
+The inspected `model-signing` 1.1.1 certificate verifier uses `certifi` when
+no chain is supplied, not a portable native-store interface. It checks the
+chain at the signing certificate's `notBefore` time. That is not proof of a
+trusted signing timestamp, current certificate validity, or current revocation
+status. Skillseal does not add online OCSP/CRL checking. Sigstore is a separate
+verifier with issuer/identity and transparency verification; do not apply
+ordinary current-time leaf-expiry assumptions to its short-lived certificates.
+
+For managed internal PKI, provision a dedicated approved certificate bundle
+through your administrative channel, or pin an approved public key. If you
+export a certificate from a native store, validate the chosen anchor and scope
+before configuring it. Do not export/trust the entire OS store. A future native
+store adapter would still need explicit publisher authorization, signing-usage
+checks, revocation/freshness semantics, and cross-platform tests; it is not just
+a performance optimization.
+
+See [emergency revocation](APPROVAL.md#emergency-trust-revocation) for content
+denials and signer removal. These are local authorization decisions, not a claim
+that a CA has revoked a certificate.
 
 ### Honest limits
 
@@ -146,6 +174,7 @@ skillseal sign       DIR... (--scan CMD | --no-scan) [--method sigstore|key|cert
                      [--private-key PEM] [--signing-certificate PEM] [--certificate-chain PEM ...]
 skillseal scan       DIR... [--fail-on LOW|MEDIUM|HIGH]
 skillseal verify     DIR... [--policy FILE] [--json] [--no-cache]
+skillseal digest     DIR...             # content identifiers for revoked_skills
 skillseal hook       AGENT [EVENT]      # called by the agent, reads the hook JSON on stdin
 ```
 

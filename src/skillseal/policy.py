@@ -8,7 +8,7 @@ Policy layers, highest authority first:
 When a system or user policy exists it is authoritative. A repository policy is
 then only merged in when that policy sets "allow_repo_signers": true, so a
 cloned repository can never make your machine trust its own signing key.
-When neither exists, the repository policy is used on its own (team mode).
+Without either, repository roots may be discovered but no signer is trusted.
 """
 
 from __future__ import annotations
@@ -71,10 +71,20 @@ class Policy:
     skill_roots: list[str] = field(default_factory=list)
     allow_repo_signers: bool = False
     sources: list[str] = field(default_factory=list)
+    revoked_skills: dict[str, str] = field(default_factory=dict)
 
     def fingerprint(self) -> str:
+        material: dict[str, str] = {}
+        for signer in self.signers:
+            paths = signer.certificate_chain + ((signer.public_key,) if signer.public_key else ())
+            for path in paths:
+                try:
+                    material[path] = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+                except OSError as exc:
+                    raise PolicyError(f"cannot read trust material {path}: {exc}") from exc
         blob = json.dumps(
-            {"mode": self.mode, "signers": [s.__dict__ for s in self.signers]},
+            {"mode": self.mode, "signers": [s.__dict__ for s in self.signers],
+             "trust_material": material, "revoked_skills": self.revoked_skills},
             sort_keys=True,
         )
         return hashlib.sha256(blob.encode()).hexdigest()
@@ -121,12 +131,21 @@ def _layer(data: dict, path: Path) -> Policy:
         raise PolicyError(f"{path}: mode must be one of {MODES}")
     signers = [Signer.parse(s, path.parent) for s in data.get("trusted_signers", [])]
     roots = [str(r) for r in data.get("skill_roots", [])]
+    revoked = data.get("revoked_skills", {})
+    if not isinstance(revoked, dict):
+        raise PolicyError(f"{path}: revoked_skills must be an object mapping SHA256 digests to reasons")
+    for digest, reason in revoked.items():
+        if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise PolicyError(f"{path}: revoked_skills keys must be lowercase SHA256 hex digests")
+        if not isinstance(reason, str) or not reason.strip():
+            raise PolicyError(f"{path}: each revoked_skills entry needs a nonempty reason")
     return Policy(
         mode=mode,
         signers=signers,
         skill_roots=roots,
         allow_repo_signers=bool(data.get("allow_repo_signers", False)),
         sources=[str(path)],
+        revoked_skills=dict(revoked),
     )
 
 

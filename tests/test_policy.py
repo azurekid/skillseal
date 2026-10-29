@@ -1,7 +1,9 @@
 import json
 
+import pytest
+
 from conftest import make_key, write_policy
-from skillseal.policy import load_policy
+from skillseal.policy import PolicyError, load_policy
 
 
 def test_no_policy_trusts_nothing(tmp_path):
@@ -54,3 +56,29 @@ def test_relative_paths_resolve_from_policy_dir(tmp_path):
     (d / "policy.json").write_text(json.dumps({"trusted_signers": [{"type": "public_key", "public_key": "k.pub"}]}))
     p = load_policy(explicit=d / "policy.json")
     assert p.signers[0].public_key == str((d / "k.pub").resolve())
+
+
+@pytest.mark.parametrize("revoked", [
+    [], None, {"invalid": "incident"}, {"A" * 64: "incident"},
+    {"0" * 64: ""}, {"0" * 64: 3},
+])
+def test_invalid_revocations_fail_explicitly(tmp_path, revoked):
+    path = write_policy(tmp_path / "policy.json", None, revoked_skills=revoked)
+    with pytest.raises(PolicyError, match="revoked_skills"):
+        load_policy(explicit=path)
+
+
+def test_repo_cannot_clear_authoritative_revocation(tmp_path, keys, isolated_env):
+    digest = "a" * 64
+    write_policy(isolated_env / ".config/skillseal/policy.json", keys[1],
+                 revoked_skills={digest: "incident"}, allow_repo_signers=True)
+    write_policy(tmp_path / ".skillseal/policy.json", keys[1], revoked_skills={})
+    policy = load_policy(project=tmp_path)
+    assert policy.revoked_skills == {digest: "incident"}
+
+
+def test_revocation_changes_policy_fingerprint(tmp_path, keys):
+    policy = load_policy(explicit=write_policy(tmp_path / "policy.json", keys[1]))
+    before = policy.fingerprint()
+    policy.revoked_skills["a" * 64] = "incident"
+    assert before != policy.fingerprint()

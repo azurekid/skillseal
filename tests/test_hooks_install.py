@@ -8,9 +8,11 @@ from pathlib import Path
 import pytest
 
 from conftest import make_skill, write_policy
+from skillseal import cache
 from skillseal.hooks import run_hook
 from skillseal.install import install
 from skillseal.sign import sign_skill
+from skillseal.verify import _walk
 
 
 @pytest.fixture
@@ -33,6 +35,24 @@ def test_signed_skill_allows(project, keys):
     skill = make_skill(project / ".claude" / "skills")
     sign_skill(skill, method="key", private_key=keys[0])
     assert run_hook("claude", "PreToolUse", stdin(project)) == 0
+
+
+@pytest.mark.parametrize("mode,expected_exit", [("enforce", 2), ("warn", 0), ("audit", 0)])
+def test_revoked_skill_respects_hook_mode(project, keys, isolated_env, capsys, mode, expected_exit):
+    skill = make_skill(project / ".github/skills")
+    sign_skill(skill, method="key", private_key=keys[0])
+    assert run_hook("copilot", "preToolUse", stdin(project)) == 0
+    digest = cache.skill_digest(skill, _walk(skill)[0])
+    write_policy(isolated_env / ".config/skillseal/policy.json", keys[1], mode=mode,
+                 revoked_skills={digest: "INC-42"})
+    assert run_hook("copilot", "preToolUse", stdin(project)) == expected_exit
+    captured = capsys.readouterr()
+    if mode == "enforce":
+        decision = json.loads(captured.out)
+        assert decision["permissionDecision"] == "deny"
+        assert "INC-42" in decision["permissionDecisionReason"]
+    audit = isolated_env / ".cache/skillseal/audit.jsonl"
+    assert json.loads(audit.read_text().splitlines()[-1])["failures"][0]["status"] == "revoked"
 
 
 @pytest.mark.parametrize(

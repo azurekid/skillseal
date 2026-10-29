@@ -9,14 +9,14 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import __version__
+from . import SKILL_FILE, __version__, cache
 from .discover import AGENTS, discover
 from .hooks import run_hook
 from .install import install, uninstall
 from .policy import GITHUB_ISSUER, MODES, Policy, PolicyError, load_policy, repo_policy_path, user_policy_path
 from .scan import ScanError, scan_exceeds_threshold, scan_skill
 from .sign import SignError, run_scanner, sign_skill
-from .verify import Result, verify_skill
+from .verify import Result, _walk, verify_skill
 
 
 def _display_path(value: str) -> str:
@@ -178,6 +178,23 @@ def cmd_verify(a) -> int:
     return 0 if all(r.ok for r in results) else 1
 
 
+def cmd_digest(a) -> int:
+    failed = False
+    for directory in a.dirs:
+        skill = Path(directory)
+        try:
+            if not (skill / SKILL_FILE).is_file() or (skill / SKILL_FILE).is_symlink():
+                raise ValueError(f"no regular {SKILL_FILE} in {skill}")
+            files, problems = _walk(skill)
+            if problems:
+                raise ValueError("; ".join(problems))
+            print(f"{cache.skill_digest(skill, files)}  {skill}")
+        except (OSError, ValueError) as exc:
+            print(f"[ERROR] {skill}: {exc}", file=sys.stderr)
+            failed = True
+    return 1 if failed else 0
+
+
 def cmd_check(a) -> int:
     cwd = Path(a.cwd).resolve()
     policy = load_policy(project=cwd, explicit=Path(a.policy) if a.policy else None)
@@ -268,6 +285,10 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--json", action="store_true")
     s.add_argument("--no-cache", action="store_true")
     s.set_defaults(func=cmd_verify)
+
+    s = sub.add_parser("digest", help="print portable skill content digests for policy revocation")
+    s.add_argument("dirs", nargs="+")
+    s.set_defaults(func=cmd_digest)
 
     s = sub.add_parser("check", help="find every skill your agents can load and verify it")
     s.add_argument("--agent", action="append", choices=AGENTS)

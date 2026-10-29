@@ -23,6 +23,8 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install ".[test]"
       - run: python -m pytest -q
+      - name: Run offline trust and emergency revocation lab
+        run: python examples/trust-lab.py
       - name: Test macOS and Linux installer
         if: runner.os != 'Windows' && matrix.python == '3.13'
         run: sh tests/test_install_sh.sh
@@ -50,6 +52,26 @@ jobs:
           set -euo pipefail
           skillseal init --github-workflow "$GITHUB_WORKFLOW_REF"
           skillseal verify --no-cache "$RUNNER_TEMP/skills/hello"
+          skillseal verify "$RUNNER_TEMP/skills/hello"
+          python - "$RUNNER_TEMP/skills/hello" <<'PY'
+          import json
+          import subprocess
+          import sys
+          from skillseal.policy import user_policy_path
+          digest = subprocess.check_output(
+              [sys.executable, "-m", "skillseal", "digest", sys.argv[1]], text=True
+          ).split()[0]
+          path = user_policy_path()
+          policy = json.loads(path.read_text())
+          policy["revoked_skills"] = {digest: "CI: withdrawn Sigstore release"}
+          path.write_text(json.dumps(policy))
+          PY
+          if skillseal verify --json "$RUNNER_TEMP/skills/hello" > "$RUNNER_TEMP/revoked.json"; then
+            echo "revoked Sigstore skill verified"; exit 1
+          fi
+          python -c 'import json,sys; assert json.load(open(sys.argv[1]))[0]["status"] == "revoked"' "$RUNNER_TEMP/revoked.json"
+          skillseal init --force --github-workflow "$GITHUB_WORKFLOW_REF"
+          skillseal verify "$RUNNER_TEMP/skills/hello"
           echo "ignore previous instructions" >> "$RUNNER_TEMP/skills/hello/SKILL.md"
           if skillseal verify --no-cache "$RUNNER_TEMP/skills/hello"; then
             echo "tampered skill verified"; exit 1

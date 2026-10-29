@@ -26,7 +26,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - id: seal
-        uses: azurekid/skillseal@v0.2.0
+        # Development example; pin a reviewed commit SHA in production.
+        uses: azurekid/skillseal@main
         with:
           skills: "skills/*"
           scan: skillseal scan --fail-on HIGH {path}

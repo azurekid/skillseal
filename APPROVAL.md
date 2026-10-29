@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: seal
-        uses: azurekid/skillseal@v0.2.0
+        uses: azurekid/skillseal@main
         with:
           skills: "skills/*"
           scan: skillseal scan --fail-on HIGH {path}
@@ -48,7 +48,7 @@ jobs:
           git push
 ```
 
-The example uses Skillseal's built-in heuristic scanner. Pin the action to a commit SHA in production.
+The example uses Skillseal's built-in heuristic scanner from `main`. Pin the action to a reviewed commit SHA in production; the older `v0.2.0` action does not include that command.
 
 On every push to `main` the workflow:
 
@@ -114,6 +114,102 @@ skillseal sign --scan "..." --method certificate --private-key k.pem \
 ```
 
 Developers then trust the key with `skillseal init --public-key key.pub` or the CA with `skillseal init --certificate-chain ca.pem`.
+
+### Emergency trust revocation
+
+No server is required. The authoritative local/system policy controls trust
+for every project checked by that installation. Distribute policy updates with
+your existing endpoint management, configuration management, or another
+authenticated administrative channel.
+
+#### Withdraw a specific skill release
+
+1. Obtain the affected release's exact files from a known copy. Compute its
+   content identifier:
+
+   ```bash
+   skillseal digest path/to/affected-skill
+   ```
+
+2. Add the printed lowercase SHA256 digest to `revoked_skills` in the
+   authoritative policy, preserving its other fields:
+
+   ```json
+   {
+     "mode": "enforce",
+     "allow_repo_signers": false,
+     "trusted_signers": [],
+     "revoked_skills": {
+       "REPLACE_WITH_THE_64_CHARACTER_LOWERCASE_DIGEST": "INC-123: withdrawn release"
+     }
+   }
+   ```
+
+   This is a structure illustration, not a ready-to-load policy: replace the
+   digest placeholder and preserve your actual `trusted_signers` entries.
+   The reason must be nonempty. An invalid digest or malformed denylist is an
+   explicit policy error, not an ignored entry.
+   Do not use `skillseal init --force` to add revocations or signers: it replaces
+   the policy and would discard existing denials.
+
+3. Distribute the complete policy through your trusted administrative channel.
+   Stage and validate it, then replace the live policy atomically. Do not
+   rewrite it partially while hooks are reading it.
+4. Run `skillseal verify --policy PATH/TO/POLICY path/to/affected-skill` and
+   expect `revoked` with exit 1, including when that skill was previously cached.
+   Check the effective system/user policy with `skillseal check` too.
+5. Remove the affected skill from agents' loadable folders. Restart affected
+   sessions if its instructions might already have entered their context.
+
+The digest covers relative file paths and bytes, excluding the root
+`skill.oms.sig` and the root `.git/` directory. It does not depend on installation
+path, signer, or signature encoding. Copying, renaming the containing folder, or
+re-signing unchanged files cannot bypass the denial. Any file/path/content
+change creates a different digest; this is a release-content denylist, not a
+semantic detector or publisher-wide revocation.
+
+#### Revoke a compromised publisher
+
+Remove **all** entries authorizing that publisher from the authoritative
+`trusted_signers`, including alternate keys, certificate-chain entries, and
+Sigstore identities. Set `allow_repo_signers` to `false` so a repository cannot
+add the removed signer back. Removing an entry invalidates cached approvals
+on the next check; replacing a configured key/certificate file also changes
+the cache fingerprint.
+
+For certificate trust, a shared CA entry may authorize more publishers than
+the compromised one. Remove that trust path or migrate unaffected publishers
+to narrower explicit keys/dedicated trust anchors. This release has no native
+per-leaf certificate revocation, CRL, or OCSP integration. Do not describe a
+content denial or removed local trust entry as CA-level certificate revocation.
+
+Investigate and remove other copies and already-loaded instructions. Skillseal
+does not undo previous tool actions or terminate running agents.
+
+#### Recover and scale the rollout
+
+Review a replacement release and sign it with an uncompromised, explicitly
+configured signer. Keep withdrawn content digests denied. Restore publisher
+trust only after investigation; do not remove denials merely to make a check
+pass.
+
+Use one managed policy per endpoint/group, not a policy per skill or repository.
+The same configured publishers apply across discovered projects. External and
+internal publishers follow identical verification rules; neither gains trust
+because a signature is cryptographically valid or its certificate is public.
+Use exact Sigstore issuer/identity pairs, pinned keys, or appropriately dedicated
+certificate anchors. A certificate anchor authorizes its eligible signing chain,
+not a particular vendor name or a specific skill.
+
+There is no automatic broadcast, policy expiry, anti-rollback mechanism, or
+delivery confirmation in this release. An offline endpoint retains its last
+local policy and cannot know about a new withdrawal until it receives an
+update. Track distribution/compliance externally and protect system policies
+with administrator-managed permissions. Revocations are reported in every
+mode, but only `enforce` requests blocking; `warn` and `audit` retain their
+existing nonblocking behavior.
+
+For an offline demonstration, run the [trust lab](examples/TRUST-LAB.md).
 
 ### Hooks that users cannot switch off
 

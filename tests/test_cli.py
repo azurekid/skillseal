@@ -78,6 +78,16 @@ def test_builtin_scan_rejects_non_skill_directory(tmp_path, capsys):
     assert "has no SKILL.md" in capsys.readouterr().err
 
 
+def test_digest_command(tmp_path, capsys):
+    skill = make_skill(tmp_path)
+    assert main(["digest", str(skill)]) == 0
+    digest, path = capsys.readouterr().out.strip().split("  ", 1)
+    assert len(digest) == 64 and int(digest, 16) >= 0
+    assert path == str(skill)
+    assert main(["digest", str(tmp_path / "missing")]) == 1
+    assert "[ERROR]" in capsys.readouterr().err
+
+
 @no_system_policy
 def test_hook_subprocess_blocks(tmp_path, keys, isolated_env):
     proj = tmp_path / "proj"

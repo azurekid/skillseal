@@ -1,12 +1,15 @@
+import json
 import os
+import shutil
 import sys
 
 import pytest
 
 from conftest import make_key, make_skill, write_policy
+from skillseal import cache
 from skillseal.policy import load_policy
 from skillseal.sign import sign_skill
-from skillseal.verify import INVALID, UNSIGNED, VERIFIED, verify_skill
+from skillseal.verify import INVALID, REVOKED, UNSIGNED, VERIFIED, _walk, verify_skill
 
 
 def signed_skill(tmp_path, keys):
@@ -158,3 +161,66 @@ def test_ignored_path_match_is_case_insensitive():
 
     assert _under("extra/payload.md", "Extra")
     assert not _under("extras/payload.md", "extra")
+
+
+@pytest.mark.parametrize("use_cache", [False, True])
+def test_revoked_content_blocks_even_after_resigning_and_copying(tmp_path, keys, use_cache):
+    skill, policy = signed_skill(tmp_path, keys)
+    assert verify_skill(skill, policy).ok
+    digest = cache.skill_digest(skill, _walk(skill)[0])
+    policy.revoked_skills[digest] = "INC-42: compromised release"
+    sign_skill(skill, method="key", private_key=keys[0])
+    copy = tmp_path / "copied-skill"
+    shutil.copytree(skill, copy)
+    result = verify_skill(copy, policy, use_cache=use_cache)
+    assert result.status == REVOKED
+    assert "INC-42" in result.reasons[0]
+
+
+def test_signer_removal_invalidates_cached_approval(tmp_path, keys):
+    skill, policy = signed_skill(tmp_path, keys)
+    assert verify_skill(skill, policy).ok
+    policy.signers.clear()
+    assert verify_skill(skill, policy).status == INVALID
+
+
+def test_replacing_trust_file_invalidates_cached_approval(tmp_path, keys):
+    skill, policy = signed_skill(tmp_path, keys)
+    assert verify_skill(skill, policy).ok
+    old_fingerprint = policy.fingerprint()
+    other = tmp_path / "replacement"
+    other.mkdir()
+    _, replacement = make_key(other)
+    keys[1].write_bytes(replacement.read_bytes())
+    assert policy.fingerprint() != old_fingerprint
+    assert verify_skill(skill, policy).status == INVALID
+
+
+def test_reloading_policy_revokes_cached_skill(tmp_path, keys):
+    skill, policy = signed_skill(tmp_path, keys)
+    assert verify_skill(skill, policy).ok
+    digest = cache.skill_digest(skill, _walk(skill)[0])
+    path = tmp_path / "p.json"
+    data = json.loads(path.read_text())
+    data["revoked_skills"] = {digest: "withdrawn"}
+    path.write_text(json.dumps(data))
+    result = verify_skill(skill, load_policy(explicit=path))
+    assert result.status == REVOKED
+
+
+def test_digest_excludes_signature_but_covers_files_and_paths(tmp_path, keys):
+    skill = make_skill(tmp_path)
+    digest = cache.skill_digest(skill, _walk(skill)[0])
+    sign_skill(skill, method="key", private_key=keys[0])
+    assert cache.skill_digest(skill, _walk(skill)[0]) == digest
+    (skill / "scripts/run.sh").rename(skill / "scripts/renamed.sh")
+    assert cache.skill_digest(skill, _walk(skill)[0]) != digest
+
+
+def test_portable_digest_known_vector_and_git_exclusion(tmp_path):
+    (tmp_path / "SKILL.md").write_bytes(b"hello\n")
+    expected = "81602bd346b33bd91129760c11c122a8a3d8f6bf42cabbde86f4677392f37bad"
+    assert cache.skill_digest(tmp_path, _walk(tmp_path)[0]) == expected
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git/config").write_bytes(b"local metadata\n")
+    assert cache.skill_digest(tmp_path, _walk(tmp_path)[0]) == expected

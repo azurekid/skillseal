@@ -33,6 +33,7 @@ ALWAYS_IGNORED = {SIGNATURE_FILE, ".git"}
 VERIFIED = "verified"
 UNSIGNED = "unsigned"
 INVALID = "invalid"
+REVOKED = "revoked"
 
 
 @dataclass
@@ -190,13 +191,20 @@ def verify_skill(skill_dir: Path, policy: Policy, use_cache: bool = True) -> Res
     if hidden:
         return Result(shown, INVALID, reasons=[f"file not covered by signature (ignored path): {h}" for h in hidden])
 
+    try:
+        digest = cache.skill_digest(real, files)
+    except OSError as exc:
+        return Result(shown, INVALID, reasons=[f"cannot hash skill: {exc}"])
+    if digest in policy.revoked_skills:
+        return Result(shown, REVOKED, reasons=[f"revoked skill {digest}: {policy.revoked_skills[digest]}"])
+
     if not policy.signers:
         return Result(shown, INVALID, reasons=["no trusted signers configured (run: skillseal init)"])
 
     key = None
     if use_cache:
         try:
-            key = cache.content_key(real, files, sig, policy.fingerprint())
+            key = cache.content_key(real, files, sig, policy.fingerprint(), digest=digest)
             hit = cache.get(key)
         except OSError:
             hit = None
