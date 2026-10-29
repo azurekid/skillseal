@@ -75,10 +75,11 @@ Yes, the command is called `organization`. It works for one person too.
 Enter your name or your project's name, follow the prompts, then review and push
 the generated public files.
 
-Connect your machine with the package it creates:
+Connect your machine with the package it creates. Use the full path printed by
+setup, replacing `OWNER/REPO` below:
 
 ```text
-skillseal setup --bundle skillseal-team.zip
+skillseal setup --bundle "~/.skillseal/exports/OWNER/REPO/skillseal-team.zip"
 ```
 
 Despite its name, `skillseal-team.zip` works perfectly well for a team of one.

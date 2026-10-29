@@ -195,19 +195,27 @@ def join_team(bundle: Path, agent: str, exe: str, yes: bool, cwd: Path) -> int:
         raise SetupError(f"IT already manages this machine through {policies.system_policy_path()}. Ask IT before onboarding.")
     target = user_policy_path().expanduser().absolute()
     public_path = target.parent / "approval.pub"
+    replace_default = False
     if target.exists():
         existing = json.loads(target.read_text(encoding="utf-8"))
-        same = dict(existing) if isinstance(existing, dict) else {}
-        same["mode"] = "audit"
-        if same != policy or existing.get("mode") not in ("audit", "warn", "enforce"):
-            raise SetupError(f"A different policy already exists at {target}. Nothing replaced; ask your administrator to merge it.")
-        policy = existing
+        replace_default = existing == {
+            "mode": "enforce", "trusted_signers": [], "allow_repo_signers": False,
+        }
+        if not replace_default:
+            same = dict(existing) if isinstance(existing, dict) else {}
+            same["mode"] = "audit"
+            if same != policy or existing.get("mode") not in ("audit", "warn", "enforce"):
+                raise SetupError(f"A different policy already exists at {target}. Nothing replaced; ask your administrator to merge it.")
+            policy = existing
     if public_path.exists() and public_path.read_bytes() != public:
         raise SetupError(f"A different approval key exists at {public_path}. Nothing replaced.")
     load_policy(project=cwd)
     print(f"Organization: {team['organization']}")
     print(f"Approval key SHA256: {team['key_sha256']}")
     print(f"Agent: {agent}\nMode: {policy['mode']}\nPolicy: {target}")
+    if replace_default:
+        print("Replaces the empty default policy with this approval key and starts in audit mode.")
+        print("The original policy will be backed up after confirmation.")
     print("Only continue if this package came through your organization's trusted channel.")
     _confirm("Trust this authority and configure your agent?", yes)
     plan = _hook_plan(agent, exe)

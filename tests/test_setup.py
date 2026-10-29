@@ -18,7 +18,7 @@ from skillseal.policy import load_policy, user_policy_path
 from skillseal.sign import sign_skill
 from skillseal.verify import verify_skill
 
-from conftest import make_skill
+from conftest import make_key, make_skill
 
 
 @pytest.fixture
@@ -67,6 +67,56 @@ def test_every_supported_setup_agent(bundle, tmp_path, agent):
     assert load_policy().signers[0].name == "Contoso"
 
 
+@pytest.mark.parametrize("agent", setup.SETUP_AGENTS)
+def test_join_replaces_empty_default_policy(bundle, tmp_path, agent, capsys):
+    assert main(["init"]) == 0
+    target = user_policy_path()
+    original = target.read_bytes()
+    assert join(bundle, tmp_path, agent) == 0
+    assert json.loads(target.read_text()) == setup.approval_policy("Contoso")
+    assert (target.parent / "approval.pub").is_file()
+    assert list(target.parent.glob("policy.json.backup-*"))[0].read_bytes() == original
+    assert "empty default policy" in capsys.readouterr().out
+
+
+def test_default_policy_to_enforcement(bundle, tmp_path, keys, monkeypatch):
+    monkeypatch.setattr(setup.shutil, "which", lambda _: "skillseal")
+    skill = make_skill(tmp_path / ".agents/skills")
+    sign_skill(skill, method="key", private_key=keys[0])
+    assert main(["init"]) == 0
+    assert main(["check", "--cwd", str(tmp_path)]) == 1
+    assert join(bundle, tmp_path) == 0
+    assert main(["check", "--cwd", str(tmp_path)]) == 0
+    assert setup.enable_enforcement("copilot", True, tmp_path) == 0
+    assert load_policy().mode == "enforce"
+    assert not load_policy().allow_repo_signers
+    enforced = user_policy_path().read_bytes()
+    assert join(bundle, tmp_path) == 0
+    assert user_policy_path().read_bytes() == enforced
+    assert verify_skill(skill, load_policy(), use_cache=False).ok
+    (skill / "SKILL.md").write_text("Edited after approval\n")
+    assert not verify_skill(skill, load_policy(), use_cache=False).ok
+    unsigned = make_skill(tmp_path / ".agents/skills", "unsigned")
+    assert not verify_skill(unsigned, load_policy(), use_cache=False).ok
+    other_private, _ = make_key(tmp_path, "untrusted")
+    sign_skill(unsigned, method="key", private_key=other_private)
+    assert not verify_skill(unsigned, load_policy(), use_cache=False).ok
+
+
+def test_declining_default_policy_replacement_preserves_settings(bundle, tmp_path, monkeypatch):
+    assert main(["init"]) == 0
+    target = user_policy_path()
+    original = target.read_bytes()
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "no")
+    with pytest.raises(setup.SetupError, match="Cancelled"):
+        join(bundle, tmp_path, yes=False)
+    assert target.read_bytes() == original
+    assert not (target.parent / "approval.pub").exists()
+    assert not (Path.home() / ".copilot").exists()
+    assert not list(target.parent.glob("*.backup-*"))
+
+
 def test_decline_and_noninteractive_need_explicit_trust(bundle, tmp_path, monkeypatch):
     monkeypatch.setattr(sys.stdin, "isatty", lambda: False)
     with pytest.raises(setup.SetupError, match="Confirmation"):
@@ -79,11 +129,17 @@ def test_decline_and_noninteractive_need_explicit_trust(bundle, tmp_path, monkey
     assert not (Path.home() / ".copilot").exists()
 
 
-def test_cannot_replace_existing_policy_or_revocations(bundle, tmp_path):
+@pytest.mark.parametrize("extra", [
+    {"revoked_skills": {"a" * 64: "withdrawn"}},
+    {"revoked_skills": {}},
+    {"skill_roots": ["/custom/skills"]},
+    {"allow_repo_signers": True},
+])
+def test_cannot_replace_existing_policy_or_revocations(bundle, tmp_path, extra):
     target = user_policy_path()
     target.parent.mkdir(parents=True)
     original = json.dumps({"mode": "enforce", "trusted_signers": [],
-                           "revoked_skills": {"a" * 64: "withdrawn"}}).encode()
+                           "allow_repo_signers": False, **extra}).encode()
     target.write_bytes(original)
     with pytest.raises(setup.SetupError, match="different policy"):
         join(bundle, tmp_path)

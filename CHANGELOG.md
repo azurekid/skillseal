@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Let confirmed bundle setup replace the exact empty default user policy with
+  the package's approval key and audit-first settings, retaining a backup.
+  Custom policies, revocations and existing approval keys remain protected.
+- Document the installed trust policy and correct the exported package paths
+  in the signing and quick-start instructions.
+
 ## 0.4.2
 
 - Explain `enforce`, `warn` and `audit` modes in CLI output and `init --help`.

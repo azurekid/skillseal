@@ -133,6 +133,9 @@ checks Skillseal runs before tool use.
 - **Gemini or OpenCode:** fully restart the application.
 
 Setup starts in **audit mode**. It reports problems but does not block work yet.
+It installs the package's public key and adds it to `trusted_signers`.
+An empty default policy from `skillseal init` is backed up and replaced only
+after you confirm trust. Existing custom policies are not overwritten.
 
 ## Check and switch on blocking
 
@@ -202,6 +205,34 @@ Setup installs them for you. You normally do not need to open or edit them.
 The folder contains `policy.json` and the public approval key, `approval.pub`.
 Never put a private key here. Custom or IT-managed locations are shown by
 `skillseal check`.
+
+After bundle setup, `policy.json` looks like this, with the name from your package:
+
+```json
+{
+  "mode": "audit",
+  "allow_repo_signers": false,
+  "trusted_signers": [
+    {
+      "name": "Your project or team name",
+      "type": "public_key",
+      "public_key": "approval.pub"
+    }
+  ],
+  "revoked_skills": {}
+}
+```
+
+`approval.pub` must be the matching public key from that same trusted package,
+stored beside the policy. `skillseal setup enforce` changes `mode` to `enforce`
+after checking your signed skills. Keep `allow_repo_signers` set to `false`:
+signed skills work because their approval key is explicitly trusted, not because
+repositories can choose their own signers.
+
+If `trusted_signers` is still empty, no signer is trusted, even if a skill has a
+signature. Rerun `skillseal setup --bundle "/path/to/skillseal-team.zip"` with
+your trusted package, then run `skillseal check`. Installing the executable or
+running `skillseal init` without a signer does not establish trust.
 
 ### Stop using Skillseal
 

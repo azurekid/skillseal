@@ -34,6 +34,8 @@ skillseal setup organization --upload-secret
 The command is named `organization`, but works for individual users too.
 Enter your name, a project name or a team name when prompted, then confirm.
 Setup creates a signing workflow, a signed welcome skill and `skillseal-team.zip`.
+The package is saved outside the repository, under
+`~/.skillseal/exports/OWNER/REPO/`; setup prints the full path and command to use.
 It also saves a private-key backup outside the repository and prints its location.
 
 **Keep the private-key backup safe. Never commit or share it.**
@@ -56,13 +58,15 @@ The included scan helps spot common problems; it does not replace review.
 
 ## 4. Connect your machine
 
-From the same repository folder, run:
+Use the full package path printed by setup, replacing `OWNER/REPO` below:
 
 ```text
-skillseal setup --bundle skillseal-team.zip
+skillseal setup --bundle "~/.skillseal/exports/OWNER/REPO/skillseal-team.zip"
 ```
 
 The package works for one person too; there is no need to send it anywhere.
+This step installs your public approval key and configures `trusted_signers`;
+creating the signing workflow alone does not configure your machine's trust.
 Continue with [Restart your agent](GETTING-STARTED.md#3-restart-your-agent)
 and enable blocking.
 
