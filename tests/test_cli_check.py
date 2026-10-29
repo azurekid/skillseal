@@ -79,8 +79,8 @@ def test_check_lists_all_trusted_authorities_without_skills(capsys):
     assert f"Issuer: {policy.signers[1].issuer}" in out
     assert f"GitHub workflow: {policy.signers[1].github_workflow}" in out
     assert "Certificate approvals (certificate)" in out
-    assert "Certificate: /trust/leaf.pem" in out
-    assert "Certificate: /trust/root.pem" in out
+    assert f"Certificate: {Path('/trust/leaf.pem')}" in out
+    assert f"Certificate: {Path('/trust/root.pem')}" in out
     assert out.index("Trusted signers") < out.index("No skills found")
 
 
