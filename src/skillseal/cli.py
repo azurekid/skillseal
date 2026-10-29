@@ -256,9 +256,10 @@ def cmd_setup(a) -> int:
     if a.action == "organization":
         if a.bundle or a.agent != "copilot":
             raise PolicyError("Organization setup creates the public team package. Select --bundle and --agent during developer setup instead.")
-        return organization(Path(a.project), a.name, a.repository, a.branch, a.upload_secret, a.yes)
-    if a.name or a.repository or a.upload_secret or a.branch != "main":
-        raise PolicyError("--name, --repository, --branch and --upload-secret belong to setup organization.")
+        return organization(Path(a.project), a.name, a.repository, a.branch, a.upload_secret, a.yes,
+                            private_key=Path(a.private_key) if a.private_key else None)
+    if a.name or a.repository or a.upload_secret or a.private_key or a.branch != "main":
+        raise PolicyError("--name, --repository, --branch, --private-key and --upload-secret belong to setup organization.")
     if a.bundle and a.action == "enforce":
         raise PolicyError("Use setup --bundle to join a team, or setup enforce to enable blocking; not both.")
     agent = _answer(a.agent, "Choose your agent: " + ", ".join(SETUP_AGENTS), "copilot")
@@ -291,6 +292,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--repository", help="GitHub signing repository, OWNER/REPO")
     s.add_argument("--branch", default="main", help="reviewed signing branch (default: main)")
     s.add_argument("--upload-secret", action="store_true", help="upload a new approval key using authenticated GitHub CLI")
+    s.add_argument("--private-key", help="reuse the original EC P-256 private key outside Git; preserve an existing workflow and secret")
     s.add_argument("--yes", action="store_true", help="explicitly approve displayed trust/configuration changes without prompting")
     s.set_defaults(func=cmd_setup)
 

@@ -24,7 +24,7 @@ def test_published_starters_verify_without_private_keys(tmp_path, isolated_env):
                  *(str(skill) for skill in skills)]) == 0
     assert not (isolated_env / ".config/skillseal/policy.json").exists()
     assert hashlib.sha256((root / "starter-approval.pub").read_bytes()).hexdigest() == KEY_FINGERPRINT
-    guide = (STARTER.parents[1] / "GETTING-STARTED.md").read_text()
+    guide = (STARTER.parents[1] / "REFERENCE.md").read_text()
     assert KEY_FINGERPRINT in guide
     for path in root.rglob("*"):
         if path.is_file():

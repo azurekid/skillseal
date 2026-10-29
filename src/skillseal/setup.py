@@ -321,7 +321,7 @@ def _workflow(branch: str) -> bytes:
 
 
 def organization(project: Path, name: str | None, repository: str | None, branch: str,
-                 upload: bool, yes: bool) -> int:
+                 upload: bool, yes: bool, private_key: Path | None = None) -> int:
     project = project.resolve()
     if not (project / ".git").exists():
         raise SetupError("Open the root of your skills Git repository and retry. No files changed.")
@@ -347,34 +347,73 @@ def organization(project: Path, name: str | None, repository: str | None, branch
     bundle = project / "skillseal-team.zip"
     public = project / ".skillseal/approval.pub"
     skill = project / ".agents/skills/skillseal-welcome"
-    for path in (workflow, bundle, public, skill):
+    reused_key: ec.EllipticCurvePrivateKey | None = None
+    if private_key is not None:
+        private_key = private_key.expanduser().resolve()
+        if private_key.is_relative_to(project):
+            raise SetupError("Keep the original private key outside this repository before reusing it.")
+        try:
+            loaded = serialization.load_pem_private_key(private_key.read_bytes(), password=None)
+        except (ValueError, TypeError) as exc:
+            raise SetupError("The original approval key must be an unencrypted EC P-256 private-key PEM.") from exc
+        if not isinstance(loaded, ec.EllipticCurvePrivateKey) or not isinstance(loaded.curve, ec.SECP256R1):
+            raise SetupError("The original approval key must be an EC P-256 private key.")
+        reused_key = loaded
+    keep_workflow = reused_key is not None and workflow.is_file() and not workflow.is_symlink()
+    for path in (bundle, public, skill) if keep_workflow else (workflow, bundle, public, skill):
         if path.exists() or path.is_symlink():
-            raise SetupError(f"Setup already exists or would replace {path}. Nothing changed; keep the existing authority.")
+            raise SetupError(
+                f"Setup already exists or would replace {path}. Nothing changed; keep the existing authority. "
+                "For an existing signing workflow, use --private-key with its original approval key "
+                "to prepare the missing team package without replacing the workflow.")
+    secret_exists = False
     if upload:
         _gh(["auth", "status"], project)
         detected = _gh(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], project)
         if detected.casefold() != repository.casefold():
             raise SetupError(f"This checkout belongs to {detected}, not {repository}. Refusing to upload a key to another repository.")
         existing = json.loads(_gh(["secret", "list", "--repo", repository, "--json", "name"], project))
-        if any(secret["name"] == "SKILLSEAL_APPROVAL_PRIVATE_KEY" for secret in existing):
-            raise SetupError("The GitHub approval secret already exists. Refusing to replace your organization's authority.")
+        secret_exists = any(secret["name"] == "SKILLSEAL_APPROVAL_PRIVATE_KEY" for secret in existing)
+        if secret_exists and reused_key is None:
+            raise SetupError(
+                "The GitHub approval secret already exists. Refusing to replace your organization's authority. "
+                "Rerun with --private-key /path/to/original-approval-private.pem to reuse it; "
+                "the existing GitHub secret will not be overwritten.")
     print(f"Organization: {name}\nSigning repository: {repository}\nBranch: {branch}")
-    print("Creates: reviewed signing workflow, signed welcome skill, public team package.")
-    print("A private-key backup will be kept outside this repository. Protect it like a password.")
-    if upload:
+    print("Creates: signed welcome skill, public approval key, public team package.")
+    if keep_workflow:
+        print(f"Preserves existing signing workflow: {workflow}")
+        print("Its behavior is unchanged and has not been validated by this wizard.")
+    else:
+        print("Creates: commit-pinned signing workflow.")
+    if reused_key is not None:
+        reused_public = reused_key.public_key().public_bytes(
+            serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        print(f"Reuses original private key: {private_key}")
+        print(f"Approval key SHA256: {hashlib.sha256(reused_public).hexdigest()}")
+        print("No new authority or private-key backup will be generated.")
+        print("GitHub cannot reveal a saved secret. Confirm this is the SAME key used by your signing workflow.")
+    else:
+        print("A private-key backup will be kept outside this repository. Protect it like a password.")
+    if secret_exists:
+        print("Preserves existing GitHub approval secret without uploading or replacing it.")
+    elif upload:
         print("Uploads the private key to the named repository secret after preparation.")
     _confirm("Prepare this repository and approval authority?", yes)
-    key = ec.generate_private_key(ec.SECP256R1())
+    key = reused_key if reused_key is not None else ec.generate_private_key(ec.SECP256R1())
     private = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
     pub = key.public_key().public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
     # Never place the private key in the checkout, even temporarily.
-    authority = Path.home() / ".skillseal-authorities" / uuid.uuid4().hex
-    if authority.resolve().is_relative_to(project):
-        raise SetupError("Private-key backup would be inside the repository. Use a repository outside your home root.")
-    authority.mkdir(parents=True, mode=0o700)
-    private_path = authority / "approval-private.pem"
-    _atomic(private_path, private)
-    print(f"Private-key backup (do not share): {private_path}")
+    if private_key is not None:
+        private_path = private_key
+    else:
+        authority = Path.home() / ".skillseal-authorities" / uuid.uuid4().hex
+        if authority.resolve().is_relative_to(project):
+            raise SetupError("Private-key backup would be inside the repository. Use a repository outside your home root.")
+        authority.mkdir(parents=True, mode=0o700)
+        private_path = authority / "approval-private.pem"
+        _atomic(private_path, private)
+        print(f"Private-key backup (do not share): {private_path}")
     try:
         with tempfile.TemporaryDirectory(prefix="skillseal-team-") as directory:
             temp = Path(directory)
@@ -394,23 +433,29 @@ def organization(project: Path, name: str | None, repository: str | None, branch
             (temp / "policy.json").write_bytes(_json(approval_policy(name)))
             if not verify_skill(welcome, load_policy(explicit=temp / "policy.json"), use_cache=False).ok:
                 raise SetupError("The generated welcome signature did not verify; no repository files written.")
-            _apply({
-                workflow: _workflow(branch), bundle: archive.read_bytes(), public: pub,
+            plan = {
+                bundle: archive.read_bytes(), public: pub,
                 skill / "SKILL.md": (welcome / "SKILL.md").read_bytes(),
                 skill / "skill.oms.sig": (welcome / "skill.oms.sig").read_bytes(),
-            })
-        if upload:
+            }
+            if not keep_workflow:
+                plan[workflow] = _workflow(branch)
+            _apply(plan)
+        if upload and not secret_exists:
             _gh(["secret", "set", "SKILLSEAL_APPROVAL_PRIVATE_KEY", "--repo", repository], project, private=private)
     except (OSError, ValueError, SignError, KeyboardInterrupt):
         print(f"Preparation incomplete. Your key backup remains at {private_path}.", file=sys.stderr)
-        print("If public files were written, keep them and upload this same backup; do not generate a replacement authority.",
+        print("If public files were written, keep them and this same key; do not generate a replacement authority.",
               file=sys.stderr)
-        print(f"GitHub: {repository} > Settings > Secrets and variables > Actions > "
-              "New repository secret > SKILLSEAL_APPROVAL_PRIVATE_KEY.", file=sys.stderr)
+        if not secret_exists:
+            print(f"GitHub: {repository} > Settings > Secrets and variables > Actions > "
+                  "New repository secret > SKILLSEAL_APPROVAL_PRIVATE_KEY.", file=sys.stderr)
         raise
     print(f"\nRepository prepared. Team package: {bundle}")
     print(f"Approval key SHA256: {fingerprint}")
-    if not upload:
+    if reused_key is not None:
+        print("Validate the next GitHub-signed skill against this package's policy before sharing it with your team.")
+    if not upload and reused_key is None:
         print("Before signing in GitHub: add the private backup as repository secret SKILLSEAL_APPROVAL_PRIVATE_KEY.")
         if os.name == "nt":
             path = str(private_path).replace("'", "''")
@@ -419,6 +464,9 @@ def organization(project: Path, name: str | None, repository: str | None, branch
         else:
             print("Or upload with GitHub CLI: gh secret set SKILLSEAL_APPROVAL_PRIVATE_KEY --repo "
                   f"{repository} < {shlex.quote(str(private_path))}")
+    elif not upload:
+        print("Existing GitHub secret was not inspected or changed. Confirm it already contains this same key, "
+              "or rerun with --upload-secret before initial preparation to add it only if missing.")
     print("Next: review and commit the generated public files, then push to the signing branch.")
     print("In GitHub Actions, confirm 'Approve skills' passes. Branch rules must allow its signature commits.")
     print("Send skillseal-team.zip through your trusted company channel; never send the private backup.")

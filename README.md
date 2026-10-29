@@ -1,120 +1,109 @@
-# skillseal
+# Skillseal
 
-**Check that your AI agent's skills are signed by someone you trust, and have not changed.**
+**You gave your AI agent tools. Be deliberate about who gives it instructions.**
 
-## The goal
+A useful skill can save you hours. But once you've copied it into your project,
+how do you know it's still the version you reviewed? What about the next skill
+you install, or the one that arrives with a repository you just cloned?
 
-Use AI agent skills without trusting every folder someone copied into a project or installed on a developer machine. Your team decides which signers it trusts. skillseal checks the skills against that trust policy before the agent can use tools.
+Skillseal gives approved skills a signature, then checks that signature before
+your agent uses tools. An unsigned skill, an unexpected edit, or a withdrawn
+approval shouldn't quietly become part of your workflow.
 
-It is open source, works on macOS, Linux and Windows, and needs no server, no MDM and no extra license. Standalone builds work without Python on supported machines.
+Built for your own laptop and private repos, not just company rollouts.
+Works on **Windows, macOS and Linux**. No central server required.
 
-**[Get started on your machine](GETTING-STARTED.md)**
+## See it for yourself
 
-## Three building blocks
-
-After [installing Skillseal](GETTING-STARTED.md#step-1-install-skillseal), choose your role:
-
-| Your goal | Command | What it does |
-| --- | --- | --- |
-| Try it | `skillseal demo` | Verifies embedded signed examples, then shows edited and unsigned skills being rejected. Changes no trust settings. |
-| Administrator | `skillseal setup organization --upload-secret` | Prepares your GitHub skills repository, creates an approval key, uploads its secret after confirmation, and builds a public team package. |
-| Developer | `skillseal setup --bundle skillseal-team.zip` | Shows the organization and key fingerprint, asks you to trust it, and installs audit-mode hooks. Defaults to Copilot. |
-
-Use `--agent claude`, `codex`, `gemini` or `opencode` for another agent.
-Once your skills verify and you have tested your agent's hooks, run
-`skillseal setup enforce` in your project to enable blocking.
-
-The target is a five-minute local setup, not a guarantee about GitHub permissions,
-workflow queue times or company approvals. These commands require **v0.4.0 or newer**.
-See the [short role-based walkthrough](GETTING-STARTED.md#five-minute-setup).
-
-## The challenge
-
-A skill is a folder with a `SKILL.md` file and sometimes scripts or other files. Agents like Claude Code, GitHub Copilot, Codex, Gemini CLI and OpenCode discover skills in project and user folders.
-
-That is useful, but it creates a trust problem:
-
-* A skill can contain instructions that steer an agent in the wrong direction.
-* A skill that passed a scan yesterday can be edited today.
-* A skill copied from another repository may never have been approved.
-* A signature helps only when somebody actually checks it before use.
-
-Scanning alone does not close this gap. You need to connect approval to the exact files the agent will use.
-
-## The solution
-
-skillseal works in two parts:
-
-1. **Approve and sign.** Your approval workflow scans a skill. If the scanner accepts it, the workflow signs the folder and writes `skill.oms.sig` next to `SKILL.md`. You can also sign with your own key or certificate.
-2. **Verify on the developer machine.** You install a guard through your agent's hook system. It discovers skills, checks whether a trusted signer signed them, and checks that no file was changed, added or removed.
+[Install Skillseal](GETTING-STARTED.md#install-skillseal), then run:
 
 ```text
-  APPROVE                               CHECK
-  -------                               -----
-  Skill folder                          Agent tool call
-       |                                      |
-       v                                      v
-  Scan and review                       Discover skills
-       |                                      |
-       v                                      v
-  Sign exact files                      Verify signer + file hashes
-       |                                      |
-       v                                      v
-  Distribute skill + signature           Pass: allow | Fail: block*
-
-  * Blocking requires enforce mode and a working agent integration.
+skillseal demo
 ```
 
-In **enforce** mode, any unapproved skill stops tool use through the configured guard. Start in **audit** mode to find existing problems without blocking your work, then switch to enforce when your skills are ready.
+You'll see an approved skill pass, an edited skill fail, and an unsigned skill
+fail. The examples are already signed. No keys to create, no GitHub setup,
+and no changes to your agent or trust settings.
 
-A signature proves who signed the files and whether they changed. **It does not prove that the skill is safe.** The quality of your scanning, review and trusted signers still matters.
+**[Try it on your own projects →](GETTING-STARTED.md#set-up-my-own-skills)**
 
-Skillseal includes a small heuristic scanner for obvious prompt-injection phrases and risky shell/network commands. It can miss harmful content and flag benign examples; it is not a safety guarantee.
+## Keep the skills. Add an approval check.
 
-### Trust and withdraw skills without a server
+You don't need to give up community skills or build everything yourself.
+Review the skills you want, approve those exact files, and let Skillseal spot
+when something no longer matches.
 
-Configure approved external publishers and internal signers in the same managed
-policy. A valid signature alone never grants trust. Withdraw a release using
-`skillseal digest` and the policy's `revoked_skills`, or remove a compromised
-publisher from the trusted signers. Updated policies take effect on the next
-check, including previously cached approvals.
+1. **Review and sign.** Your GitHub workflow scans skills and signs them with
+   your approval key. You decide what reaches the signing branch.
+2. **Connect your agent.** Accept your setup package once on your machine.
+3. **Check, then block.** Start in audit mode to see what needs attention.
+   Enable enforcement when your skills are ready.
 
-For managed teams, configure one organization approval public key or dedicated
-CA in that policy. GitHub Actions signs reviewed skills using the corresponding
-protected private key; endpoints do not need to trust individual workflows.
-See [organization approval setup](APPROVAL.md#configure-the-organization-approval-authority).
+In enforce mode, any discovered skill that fails verification causes the
+configured guard to request blocking of tool calls—not just calls from that skill.
 
-Run the [offline trust and revocation lab](examples/TRUST-LAB.md), or follow the
-[emergency revocation runbook](APPROVAL.md#emergency-trust-revocation). Policy
-distribution is your responsibility: offline devices cannot learn about a new
-revocation until their local policy is updated.
+Already approved a skill and copied it to another project? Its signature travels
+with it. Copy the whole folder, including `skill.oms.sig`, without editing the files.
 
-The organization wizard generates a workflow using a commit-pinned signing
-action, without a moving shared-workflow reference. For a manually managed
-reusable setup instead, use the [small caller workflow](examples/approve-skills.yml)
-in your skills repository. It delegates to Skillseal's
-[reusable approval workflow](.github/workflows/approve-skills.yml). Follow the
-[setup instructions](APPROVAL.md#2-add-the-approval-workflow).
-The shared workflow defaults to organization-key approval. Optional keyless
-shared-workflow verification requires a version newer than 0.3.0.
+## Just you? That's enough.
 
-## Read the guide you need
+Your personal GitHub account and a private repository are all you need on the
+GitHub side. No organization account or administrator required.
 
-| Guide | What it covers |
-| --- | --- |
-| [Getting started](GETTING-STARTED.md) | Install on Windows, macOS or Linux, set your trust policy, connect your agent, test blocking and troubleshoot |
-| [Approval guide](APPROVAL.md) | Set up scanning and signing, share the policy and distribute signed skills |
-| [Technical reference](REFERENCE.md) | Agent hooks, skill locations, policy precedence, verification rules, limits and commands |
-| [Trust lab](examples/TRUST-LAB.md) | Reproduce internal/external trust, tamper detection, withdrawal, and recovery without a server |
-| [Release notes](CHANGELOG.md) | Changes included in each release |
+Follow the [short signing setup](APPROVAL.md), starting in your own skills repo:
 
-Using VS Code? Start with [the VS Code instructions](GETTING-STARTED.md#vs-code). Other tools: [Copilot CLI](GETTING-STARTED.md#github-copilot-cli), [Claude Code](GETTING-STARTED.md#claude-code), [Codex](GETTING-STARTED.md#codex-cli), [Gemini](GETTING-STARTED.md#gemini-cli) and [OpenCode](GETTING-STARTED.md#opencode). OpenClaw support is experimental and not tested.
+```text
+skillseal setup organization --upload-secret
+```
 
-## Know the limits
+Yes, the command is called `organization`. It works for one person too.
+Enter your name or your project's name, follow the prompts, then review and push
+the generated public files.
 
-skillseal is a guard, not a sandbox. Users who control their machine can remove user hooks. Only skill folders are covered, not every instruction or command file an agent can read. Copilot hook timeouts fail open, and VS Code hooks are still in Preview.
+Connect your machine with the package it creates:
 
-Read the [full limits](REFERENCE.md#honest-limits) before treating this as an enforcement boundary.
+```text
+skillseal setup --bundle skillseal-team.zip
+```
+
+Despite its name, `skillseal-team.zip` works perfectly well for a team of one.
+If someone already approves skills for you, use their trusted package instead.
+
+Restart your agent. Once your skills pass `skillseal check`, use
+`skillseal setup enforce` to enable blocking and
+[test it](GETTING-STARTED.md#check-and-switch-on-blocking).
+
+Working with others later? Share that public package through a trusted channel.
+They can verify your approvals without receiving your private signing key.
+
+**Supports GitHub Copilot, Claude Code, Codex, Gemini CLI and OpenCode.**
+Copilot is the default; the [setup guide](GETTING-STARTED.md#join-your-team)
+shows how to choose another agent. Guided setup requires **v0.4.0 or newer**.
+
+## What this does—and doesn't—promise
+
+Skillseal checks **who signed a skill, whether its files changed, and whether
+your local policy has withdrawn approval**. You still need to review what you
+sign. A valid signature on a bad skill is still a bad skill.
+
+It's a guard, not a sandbox. It doesn't stop an agent from reading Markdown,
+undo past actions, or magically make every agent integration fail closed.
+Blocking depends on working hooks; Copilot timeouts can allow commands through.
+And a withdrawn approval only reaches an offline machine when its policy is updated.
+
+That's why [testing your agent's blocking behavior](GETTING-STARTED.md#check-and-switch-on-blocking)
+is part of setup, not an optional finishing touch.
+Read the [full limits](REFERENCE.md#honest-limits) before relying on enforcement.
+
+## Pick your next step
+
+- [Get started on your machine](GETTING-STARTED.md)
+- [Set up signing for yourself or a team](APPROVAL.md)
+- [Troubleshooting](GETTING-STARTED.md#need-help)
+- [Advanced administration and emergency withdrawal](ADMINISTRATION.md)
+- [Technical reference](REFERENCE.md)
+- [Reproducible trust and revocation lab](examples/TRUST-LAB.md)
+- [Release notes](CHANGELOG.md)
 
 ## License
 

@@ -2,6 +2,9 @@
 
 [Overview](README.md) | [Getting started](GETTING-STARTED.md) | [Approval guide](APPROVAL.md) | [Reference](REFERENCE.md)
 
+For custom signing workflows, certificates and incident response, see
+[Advanced administration](ADMINISTRATION.md).
+
 ### How it works
 
 ```text
@@ -36,7 +39,7 @@ skillseal uses the [OpenSSF Model Signing (OMS)](https://github.com/sigstore/mod
 | OpenCode | `~/.config/opencode/plugins/skillseal.js` | `.opencode/plugins/skillseal.js` | `tool.execute.before` (plugin throws) |
 | OpenClaw (experimental) | `~/.openclaw/policies/skillseal-guard.ts` | same | `before_tool_call` |
 
-Blocking hooks are written as `skillseal hook ... || exit 2` for `sh` and `cmd.exe`, and as `& 'skillseal' hook ...; if (-not $?) { exit 2 }` for PowerShell (see the [Windows table](GETTING-STARTED.md#step-4-connect-skillseal-to-your-agent)). Claude Code hooks also set `"onFailure": "block"`, and on Windows they use exec form. The OpenCode plugin throws on any error. So when skillseal crashes or is missing, the agent is blocked too (fail closed). For Copilot and Claude a `SessionStart` hook also tells the agent why tools are blocked.
+Blocking hooks are written as `skillseal hook ... || exit 2` for `sh` and `cmd.exe`, and as `& 'skillseal' hook ...; if (-not $?) { exit 2 }` for PowerShell. Claude Code hooks also set `"onFailure": "block"`, and on Windows they use exec form. The OpenCode plugin throws on any error. The generated commands request blocking on a crash or missing binary; host timeout behavior still applies, as described under [limits](#honest-limits). For Copilot and Claude a `SessionStart` hook also tells the agent why tools are blocked.
 
 The [test suite](tests/test_hooks_install.py) runs the written hook commands in the real shells (`sh` on macOS and Linux; `cmd.exe`, Windows PowerShell 5.1, `pwsh` and exec form on Windows) for an unsigned skill, a signed skill and a missing binary.
 
@@ -56,6 +59,78 @@ Project folders are searched from the working directory up to the repository roo
 | gemini | `.gemini/skills`, `.agents/skills` | `~/.gemini/skills`, `~/.agents/skills`, `~/.gemini/extensions` |
 | opencode | `.opencode/skills`, `.claude/skills`, `.agents/skills` | `~/.config/opencode/skills`, `~/.claude/skills`, `~/.agents/skills` |
 | openclaw | `skills`, `.agents/skills` | `~/.agents/skills`, `~/.openclaw/skills` |
+
+### Manual setup
+
+Prefer [guided setup](GETTING-STARTED.md#join-your-team). If an administrator
+supplies separate policy files instead of a team package:
+
+1. Obtain `policy.json` and its referenced public-key or certificate files
+   through a trusted channel. Never install a private signing key on endpoints.
+2. Create the user policy directory: `~/.config/skillseal` on macOS/Linux or
+   `%USERPROFILE%\.config\skillseal` on Windows. Use `XDG_CONFIG_HOME` or
+   `SKILLSEAL_POLICY` overrides if configured. A system policy takes precedence.
+3. If a policy already exists, merge changes with your administrator; do not
+   discard signers, revocations or other settings.
+4. Put the reviewed policy there as `policy.json`, with the public files it
+   references beside it. Relative paths resolve from this directory.
+5. Run `skillseal install AGENT --scope user`, replacing `AGENT` with your agent,
+   then restart it and check its hooks. Begin in audit mode.
+
+Use `copilot` for the VS Code Copilot chat target or Copilot CLI, `claude` for
+Claude Code and `codex` for Codex. The legacy VS Code Local target is unsupported.
+Claude Code must trust the project before it runs hooks; use version 2.1.295+
+for its `onFailure` blocking behavior. Codex requires approval of new hooks.
+OpenCode loads its plugin only at startup.
+
+For experimental OpenClaw, run `skillseal install openclaw --scope user` and
+apply the printed `plugins.load.paths` snippet. This integration is not tested.
+
+### Installation alternatives
+
+The [normal installers](GETTING-STARTED.md#install-skillseal) download release
+archives, check SHA256 checksums and install for the current user.
+Standalone builds support Windows x64, macOS Apple silicon and Linux x64 with
+glibc 2.35+; use a Python 3.10+ installation on other systems.
+Close running agents before updating. If `skillseal` is not on PATH, open a
+new terminal. For a Python install use `pipx ensurepath` or `uv tool update-shell`.
+
+For an offline or manually reviewed installation, download the appropriate
+archive and `SHA256SUMS.txt` from the [release page](https://github.com/azurekid/skillseal/releases).
+Compare the archive's SHA256 with the published value before unpacking it:
+
+```bash
+# macOS
+shasum -a 256 skillseal-macos-arm64.tar.gz
+# Linux
+sha256sum skillseal-linux-x64.tar.gz
+```
+
+```powershell
+# Windows
+(Get-FileHash .\skillseal-windows-x64.zip -Algorithm SHA256).Hash
+```
+
+For GitHub build provenance, use `gh attestation verify ARCHIVE --repo azurekid/skillseal`.
+For Windows offline installation, run a reviewed copy of
+`install.ps1 -ZipPath .\skillseal-windows-x64.zip`.
+Installers and standalone programs are not Authenticode or Apple Developer ID
+signed; follow company software approval rules if they are blocked.
+
+### Downloadable starter examples
+
+`skillseal demo` includes everything needed for a quick test. For a reusable
+copy, download `skillseal-starter.zip` from a v0.4.0+ release and follow its
+[instructions](examples/starter/README.md).
+The demo-only public-key file SHA256 is:
+
+```text
+b22cd994bc688234edaf8df63f23a923101cb5079e23d1dd0c2ee77c1875ad33
+```
+
+Compare this fingerprint through a source you trust. Do not install demo trust
+as your organization policy. The demo proves signature verification, not host
+enforcement.
 
 ### The trust policy
 
@@ -124,7 +199,7 @@ The GitHub action supports `signing-method: key` or `certificate` with PEM
 credentials passed explicitly from GitHub secrets. The reusable approval
 workflow defaults to `key`; the composite action defaults to `sigstore` for
 compatibility. Organization approval policies authorize the key/anchor, not the
-GitHub workflow. See [setup](APPROVAL.md#configure-the-organization-approval-authority).
+GitHub workflow. See [manual authority setup](ADMINISTRATION.md#configure-the-organization-approval-authority).
 
 The inspected `model-signing` 1.1.1 certificate verifier uses `certifi` when
 no chain is supplied, not a portable native-store interface. It checks the
@@ -142,7 +217,7 @@ store adapter would still need explicit publisher authorization, signing-usage
 checks, revocation/freshness semantics, and cross-platform tests; it is not just
 a performance optimization.
 
-See [emergency revocation](APPROVAL.md#emergency-trust-revocation) for content
+See [emergency revocation](ADMINISTRATION.md#emergency-trust-revocation) for content
 denials and signer removal. These are local authorization decisions, not a claim
 that a CA has revoked a certificate.
 
@@ -150,7 +225,7 @@ that a CA has revoked a certificate.
 
 skillseal raises the bar a lot, but it is not a sandbox:
 
-* **A user who controls their machine can remove the hooks.** skillseal protects people and teams against poisoned skills, not against themselves. See [Hooks that users cannot switch off](APPROVAL.md#hooks-that-users-cannot-switch-off).
+* **A user who controls their machine can remove the hooks.** skillseal protects people and teams against poisoned skills, not against themselves. See [Hooks that users cannot switch off](ADMINISTRATION.md#hooks-that-users-cannot-switch-off).
 * **Malicious repositories do not bring the guard.** That is why you install with `--scope user`.
 * **Standalone builds** are made with PyInstaller for Windows x64, macOS arm64 and Linux x64 (glibc 2.35+). They are not Authenticode or Apple Developer ID signed; integrity comes from the SHA256 checksums and GitHub build provenance.
 * **Copilot hook timeouts fail open** (documented by GitHub). The check is cached and the timeout is 60 seconds, but a hook that hangs lets the call through.
@@ -183,7 +258,7 @@ skillseal reuses OMS and adds the missing parts: a trust policy, stricter verifi
 skillseal demo                         # isolated embedded signature demonstration
 skillseal setup      [--bundle TEAM.zip] [--agent NAME] [--project DIR] [--yes]
 skillseal setup organization [--name NAME] [--repository OWNER/REPO] [--branch main]
-                            [--upload-secret] [--project DIR] [--yes]
+                            [--upload-secret] [--private-key ORIGINAL.pem] [--project DIR] [--yes]
 skillseal setup enforce [--agent NAME] [--project DIR] [--yes]
 skillseal init       [--scope user|repo] [--mode enforce|warn|audit] [--github-workflow REF] [--identity ID --issuer URL]
                      [--reusable-workflow REF] [--public-key PEM] [--certificate-chain PEM ...] [--force]
@@ -205,6 +280,14 @@ See the [onboarding walkthrough](GETTING-STARTED.md#five-minute-setup).
 It never treats an imported package's self-declared organization or checksum as
 independent proof of identity; accepting it grants authority to its public key.
 `--yes` explicitly authorizes that trust and the displayed changes.
+
+Organization setup can reuse an original, unencrypted EC P-256 private key
+outside the repository using `--private-key`. In this mode an existing workflow
+is preserved rather than rewritten. With `--upload-secret`, an existing approval
+secret is kept and only a missing secret is uploaded. GitHub secrets are
+write-only: the wizard cannot prove the saved value matches the supplied key.
+Verify a GitHub-produced signature with the generated public policy before
+distribution. This is not an authority-rotation or general overwrite option.
 
 Team packages use format `skillseal-team-v1`: a ZIP containing exactly
 `team.json`, `policy.json` and `approval.pub`. The manifest identifies the

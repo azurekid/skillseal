@@ -381,7 +381,7 @@ def test_failed_upload_keeps_recoverable_authority(tmp_path, monkeypatch, capsys
         setup.organization(repo, "Contoso", "contoso/skills", "main", True, True)
     assert (repo / "skillseal-team.zip").exists()
     assert list((Path.home() / ".skillseal-authorities").glob("*/approval-private.pem"))
-    assert "same backup" in capsys.readouterr().err
+    assert "same key" in capsys.readouterr().err
     assert join(repo / "skillseal-team.zip", repo) == 0
     assert verify_skill(repo / ".agents/skills/skillseal-welcome", load_policy(), use_cache=False).ok
 
@@ -425,3 +425,79 @@ def test_cli_join_then_real_guard_rejects_edit(bundle, tmp_path, keys, monkeypat
     assert guard().returncode == 0
     (skill / "SKILL.md").write_text("Edited after approval.")
     assert guard().returncode != 0
+
+
+@pytest.mark.parametrize("secret_exists", [True, False])
+def test_original_key_reused_without_rotation(tmp_path, keys, monkeypatch, capsys, secret_exists):
+    repo = tmp_path / "repository"
+    subprocess.run(["git", "init", "--quiet", str(repo)], check=True)
+    workflow = repo / ".github/workflows/approve-skills.yml"
+    workflow.parent.mkdir(parents=True)
+    original_workflow = b"name: Existing organization workflow\n"
+    workflow.write_bytes(original_workflow)
+    private, pub = keys
+    original_key = private.read_bytes()
+    calls = []
+
+    def gh(args, project, *, private=None):
+        calls.append((args, private))
+        if args[:2] == ["repo", "view"]:
+            return "contoso/skills"
+        if args[:2] == ["secret", "list"]:
+            return '[{"name":"SKILLSEAL_APPROVAL_PRIVATE_KEY"}]' if secret_exists else "[]"
+        return ""
+
+    monkeypatch.setattr(setup, "_gh", gh)
+    monkeypatch.setattr(setup.shutil, "which", lambda _: "gh")
+    assert setup.organization(repo, "Contoso", "contoso/skills", "main", True, True,
+                              private_key=private) == 0
+    uploads = [data for args, data in calls if args[:2] == ["secret", "set"]]
+    assert uploads == ([] if secret_exists else [original_key])
+    assert private.read_bytes() == original_key
+    assert workflow.read_bytes() == original_workflow
+    assert (repo / ".skillseal/approval.pub").read_bytes() == pub.read_bytes()
+    assert not (Path.home() / ".skillseal-authorities").exists()
+    assert join(repo / "skillseal-team.zip", repo) == 0
+    assert verify_skill(repo / ".agents/skills/skillseal-welcome", load_policy(), use_cache=False).ok
+    output = capsys.readouterr().out
+    assert "No new authority" in output
+    assert "SAME key" in output
+    assert original_key.decode() not in output
+
+
+def test_reuse_private_key_decline_has_no_side_effects(tmp_path, keys, monkeypatch):
+    repo = tmp_path / "repository"
+    subprocess.run(["git", "init", "--quiet", str(repo)], check=True)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", lambda _: "no")
+    monkeypatch.setattr(setup.shutil, "which", lambda _: None)
+    with pytest.raises(setup.SetupError, match="Cancelled"):
+        setup.organization(repo, "Contoso", "contoso/skills", "main", False, False,
+                           private_key=keys[0])
+    assert list(repo.iterdir()) == [repo / ".git"]
+    assert not (Path.home() / ".skillseal-authorities").exists()
+
+
+def test_reuse_requires_private_key_outside_repo(tmp_path, keys):
+    repo = tmp_path / "repository"
+    subprocess.run(["git", "init", "--quiet", str(repo)], check=True)
+    private = repo / "approval-private.pem"
+    shutil.copyfile(keys[0], private)
+    with pytest.raises(setup.SetupError, match="outside this repository"):
+        setup.organization(repo, "Contoso", "contoso/skills", "main", False, True,
+                           private_key=private)
+    assert not (repo / "skillseal-team.zip").exists()
+
+
+def test_reuse_rejects_public_key_file(tmp_path, keys):
+    repo = tmp_path / "repository"
+    subprocess.run(["git", "init", "--quiet", str(repo)], check=True)
+    with pytest.raises(setup.SetupError, match="private-key PEM"):
+        setup.organization(repo, "Contoso", "contoso/skills", "main", False, True,
+                           private_key=keys[1])
+    assert not (repo / "skillseal-team.zip").exists()
+
+
+def test_private_key_option_only_for_organization(tmp_path, capsys):
+    assert main(["setup", "--private-key", str(tmp_path / "key.pem")]) == 2
+    assert "belong to setup organization" in capsys.readouterr().err

@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.1
+
+- Give individual developers and private repositories a first-class setup path,
+  alongside optional team sharing, without implying corporate accounts or
+  administrators are required.
+- Replace the long onboarding pages with short install, developer and team
+  setup steps. Move custom signing and incident-response details to the
+  advanced administration guide, keeping the normal path free of policy JSON
+  and cryptography explanations.
+- Allow organization setup to reuse an original private key using `--private-key`,
+  retaining an existing workflow and GitHub approval secret instead of forcing
+  users to create another authority. Show fingerprint and secret-match limits
+  before confirmation; never overwrite existing team outputs or rotate trust.
+- Explain recovery from an existing approval secret and how to verify that the
+  GitHub signer matches the generated team policy.
+
 ## 0.4.0
 
 - Add `skillseal demo`, with embedded signed examples in wheels and standalone builds.

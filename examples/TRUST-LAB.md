@@ -88,5 +88,5 @@ outcome. Do not equate verifier rejection or emitted hook JSON with proven host
 enforcement. Host timeouts can fail open; content already in a running agent's
 context cannot be recalled by changing policy.
 
-See the [incident runbook](../APPROVAL.md#emergency-trust-revocation) for policy
+See the [incident runbook](../ADMINISTRATION.md#emergency-trust-revocation) for policy
 distribution, signer compromise, and recovery.
