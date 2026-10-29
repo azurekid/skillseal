@@ -290,6 +290,21 @@ If different repositories run their own approval workflows, add each trusted ide
 
 These are example identities, not preconfigured approval services. Replace them with workflows you actually control and trust. When editing an existing policy, add entries to its `trusted_signers` array and preserve its other settings. Running `skillseal init --force` replaces the file; it does not append another signer.
 
+For a new machine-wide policy, `skillseal init` accepts `--github-workflow`
+more than once and creates one signer entry per repository:
+
+```bash
+skillseal init --scope user \
+  --github-workflow YOUR-ORG/skills-one/.github/workflows/approve.yml@refs/heads/main \
+  --github-workflow YOUR-ORG/skills-two/.github/workflows/approve.yml@refs/heads/main
+```
+
+For several repositories calling the same reusable workflow, repeat the caller
+option and supply the shared reusable workflow once. Each caller gets its own
+restricted signer entry. A user policy is loaded for checks in all projects on
+that machine; project-specific repository policies remain separate. Signers in
+the shared user policy are not restricted to skills from a particular project.
+
 Every listed workflow is trusted to sign any discovered skill. Entries do not restrict a signer to skills in a particular application repository. Only add workflows whose approvals you accept across the projects using this policy.
 
 ### 4. Get the skills to developers

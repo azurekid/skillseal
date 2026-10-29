@@ -4,6 +4,8 @@
 
 - Explain `enforce`, `warn` and `audit` modes in CLI output and `init --help`.
 - Clarify mode behavior, configuration and defaults in the README and reference.
+- Save generated team packages outside the signing checkout and support multiple
+  GitHub workflow signers in one user policy.
 
 ## 0.4.1
 

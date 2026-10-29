@@ -120,6 +120,11 @@ def approval_policy(name: str, public_file: str = "approval.pub") -> dict:
     }
 
 
+def _team_bundle_path(repository: str) -> Path:
+    owner, name = repository.split("/", 1)
+    return Path.home() / ".skillseal" / "exports" / owner.lower() / name.lower() / "skillseal-team.zip"
+
+
 def read_bundle(path: Path) -> tuple[dict, bytes, dict]:
     try:
         if path.stat().st_size > 3 * MAX_BUNDLE_BYTES:
@@ -344,7 +349,9 @@ def organization(project: Path, name: str | None, repository: str | None, branch
     if not name.strip() or len(name) > 100 or not name.isprintable():
         raise SetupError("Use a short, printable organization name.")
     workflow = project / ".github/workflows/approve-skills.yml"
-    bundle = project / "skillseal-team.zip"
+    bundle = _team_bundle_path(repository)
+    if bundle.resolve().is_relative_to(project):
+        raise SetupError("Team package export location must be outside the signing repository.")
     public = project / ".skillseal/approval.pub"
     skill = project / ".agents/skills/skillseal-welcome"
     reused_key: ec.EllipticCurvePrivateKey | None = None
@@ -381,6 +388,7 @@ def organization(project: Path, name: str | None, repository: str | None, branch
                 "the existing GitHub secret will not be overwritten.")
     print(f"Organization: {name}\nSigning repository: {repository}\nBranch: {branch}")
     print("Creates: signed welcome skill, public approval key, public team package.")
+    print(f"Team package: {bundle}")
     if keep_workflow:
         print(f"Preserves existing signing workflow: {workflow}")
         print("Its behavior is unchanged and has not been validated by this wizard.")
@@ -469,7 +477,8 @@ def organization(project: Path, name: str | None, repository: str | None, branch
               "or rerun with --upload-secret before initial preparation to add it only if missing.")
     print("Next: review and commit the generated public files, then push to the signing branch.")
     print("In GitHub Actions, confirm 'Approve skills' passes. Branch rules must allow its signature commits.")
-    print("Send skillseal-team.zip through your trusted company channel; never send the private backup.")
-    print("Developer command: skillseal setup --bundle skillseal-team.zip")
+    print("Send the public team package above through your trusted company channel; never send the private backup.")
+    bundle_arg = subprocess.list2cmdline([str(bundle)]) if os.name == "nt" else shlex.quote(str(bundle))
+    print(f"Use it with: skillseal setup --bundle {bundle_arg}")
     print("The welcome skill uses .agents/skills. For Claude Code, copy its complete folder to .claude/skills.")
     return 0

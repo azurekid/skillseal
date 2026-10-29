@@ -99,6 +99,31 @@ def test_init_reusable_workflow_binds_caller(isolated_env):
     assert main(["init", "--reusable-workflow", reusable, "--force"]) == 2
 
 
+def test_init_accepts_multiple_workflow_signers(isolated_env):
+    first = "team/skills/.github/workflows/approve.yml@refs/heads/main"
+    second = "team/app-skills/.github/workflows/approve.yml@refs/heads/main"
+    assert main(["init", "--github-workflow", first, "--github-workflow", second]) == 0
+    policy = json.loads((isolated_env / ".config/skillseal/policy.json").read_text())
+    assert [signer["identity"] for signer in policy["trusted_signers"]] == [
+        f"https://github.com/{first}", f"https://github.com/{second}",
+    ]
+
+
+def test_init_reusable_workflow_can_trust_multiple_callers(isolated_env):
+    first = "team/skills/.github/workflows/approve.yml@refs/heads/main"
+    second = "team/app-skills/.github/workflows/approve.yml@refs/heads/main"
+    reusable = "azurekid/skillseal/.github/workflows/approve-skills.yml@abc123"
+    assert main(["init", "--github-workflow", first, "--github-workflow", second,
+                 "--reusable-workflow", reusable]) == 0
+    policy = json.loads((isolated_env / ".config/skillseal/policy.json").read_text())
+    assert [signer["identity"] for signer in policy["trusted_signers"]] == [
+        f"https://github.com/{reusable}", f"https://github.com/{reusable}",
+    ]
+    assert [signer["github_workflow"] for signer in policy["trusted_signers"]] == [
+        f"https://github.com/{first}", f"https://github.com/{second}",
+    ]
+
+
 def test_init_explains_selected_mode(isolated_env, capsys):
     assert main(["init", "--mode", "warn"]) == 0
     captured = capsys.readouterr()

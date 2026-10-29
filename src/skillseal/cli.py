@@ -92,19 +92,21 @@ def cmd_init(a) -> int:
         return 1
     signers = []
     if a.github_workflow:
-        signers.append({
-            "name": "approval workflow",
-            "type": "sigstore",
-            "identity": f"https://github.com/{a.github_workflow}",
-            "issuer": GITHUB_ISSUER,
-        })
-        if a.reusable_workflow:
-            signers[-1]["github_workflow"] = signers[-1]["identity"]
-            signers[-1]["identity"] = f"https://github.com/{a.reusable_workflow}"
+        for caller in a.github_workflow:
+            identity = f"https://github.com/{caller}"
+            signer = {
+                "name": "approval workflow",
+                "type": "sigstore",
+                "identity": f"https://github.com/{a.reusable_workflow}" if a.reusable_workflow else identity,
+                "issuer": GITHUB_ISSUER,
+            }
+            if a.reusable_workflow:
+                signer["github_workflow"] = identity
+            signers.append(signer)
     elif a.reusable_workflow:
         raise PolicyError("--reusable-workflow requires --github-workflow to restrict the caller")
-    if a.identity:
-        signers.append({"name": "sigstore identity", "type": "sigstore", "identity": a.identity, "issuer": a.issuer})
+    for identity in a.identity or []:
+        signers.append({"name": "sigstore identity", "type": "sigstore", "identity": identity, "issuer": a.issuer})
     if a.public_key:
         signers.append({"name": "public key", "type": "public_key", "public_key": str(Path(a.public_key).resolve())})
     if a.certificate_chain:
@@ -315,11 +317,11 @@ def build_parser() -> argparse.ArgumentParser:
                        "warn allows with a warning, audit logs without warning or blocking "
                        "(default: enforce)"
                    ))
-    s.add_argument("--github-workflow", metavar="OWNER/REPO/.github/workflows/FILE.yml@REF",
-                   help="trust Sigstore signatures made by this GitHub Actions workflow")
+    s.add_argument("--github-workflow", action="append", metavar="OWNER/REPO/.github/workflows/FILE.yml@REF",
+                   help="trust this GitHub Actions workflow; repeat for additional repositories")
     s.add_argument("--reusable-workflow", metavar="OWNER/REPO/.github/workflows/FILE.yml@REF",
-                   help="reusable signing workflow identity; --github-workflow restricts its caller")
-    s.add_argument("--identity", help="trust this Sigstore certificate identity (needs --issuer)")
+                   help="shared reusable signing workflow identity; every --github-workflow entry restricts a caller")
+    s.add_argument("--identity", action="append", help="trust this Sigstore certificate identity (needs --issuer); repeat for more")
     s.add_argument("--issuer", default=GITHUB_ISSUER)
     s.add_argument("--public-key", help="trust an EC public key (PEM)")
     s.add_argument("--certificate-chain", nargs="+", help="trust a certificate chain, for example nv-agent-root-cert.pem")

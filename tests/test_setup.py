@@ -252,13 +252,17 @@ def test_enforce_refuses_missing_hook(bundle, tmp_path):
     assert load_policy().mode == "audit"
 
 
-def test_organization_to_developer_flow(tmp_path, monkeypatch):
+def test_organization_to_developer_flow(tmp_path, monkeypatch, capsys):
     repo = tmp_path / "repository"
     repo.mkdir()
     subprocess.run(["git", "init", "--quiet", str(repo)], check=True)
     monkeypatch.setattr(setup.shutil, "which", lambda _: None)
     assert setup.organization(repo, "Contoso", "contoso/skills", "main", False, True) == 0
-    bundle = repo / "skillseal-team.zip"
+    bundle = setup._team_bundle_path("contoso/skills")
+    assert bundle.is_file() and not bundle.is_relative_to(repo)
+    output = capsys.readouterr().out
+    assert f"Team package: {bundle}" in output
+    assert str(bundle) in output
     team, public, _ = setup.read_bundle(bundle)
     assert team["organization"] == "Contoso"
     backups = list((Path.home() / ".skillseal-authorities").glob("*/approval-private.pem"))
@@ -311,7 +315,7 @@ def test_existing_secret_is_not_overwritten(tmp_path, monkeypatch):
                         else '[{"name":"SKILLSEAL_APPROVAL_PRIVATE_KEY"}]')
     with pytest.raises(setup.SetupError, match="already exists"):
         setup.organization(repo, "Contoso", "contoso/skills", "main", True, True)
-    assert not (repo / "skillseal-team.zip").exists()
+    assert not setup._team_bundle_path("contoso/skills").exists()
     assert not (Path.home() / ".skillseal-authorities").exists()
 
 
@@ -379,10 +383,11 @@ def test_failed_upload_keeps_recoverable_authority(tmp_path, monkeypatch, capsys
     monkeypatch.setattr(setup, "_gh", gh)
     with pytest.raises(setup.SetupError, match="upload failed"):
         setup.organization(repo, "Contoso", "contoso/skills", "main", True, True)
-    assert (repo / "skillseal-team.zip").exists()
+    bundle = setup._team_bundle_path("contoso/skills")
+    assert bundle.exists() and not bundle.is_relative_to(repo)
     assert list((Path.home() / ".skillseal-authorities").glob("*/approval-private.pem"))
     assert "same key" in capsys.readouterr().err
-    assert join(repo / "skillseal-team.zip", repo) == 0
+    assert join(bundle, repo) == 0
     assert verify_skill(repo / ".agents/skills/skillseal-welcome", load_policy(), use_cache=False).ok
 
 
@@ -457,7 +462,7 @@ def test_original_key_reused_without_rotation(tmp_path, keys, monkeypatch, capsy
     assert workflow.read_bytes() == original_workflow
     assert (repo / ".skillseal/approval.pub").read_bytes() == pub.read_bytes()
     assert not (Path.home() / ".skillseal-authorities").exists()
-    assert join(repo / "skillseal-team.zip", repo) == 0
+    assert join(setup._team_bundle_path("contoso/skills"), repo) == 0
     assert verify_skill(repo / ".agents/skills/skillseal-welcome", load_policy(), use_cache=False).ok
     output = capsys.readouterr().out
     assert "No new authority" in output
@@ -486,7 +491,7 @@ def test_reuse_requires_private_key_outside_repo(tmp_path, keys):
     with pytest.raises(setup.SetupError, match="outside this repository"):
         setup.organization(repo, "Contoso", "contoso/skills", "main", False, True,
                            private_key=private)
-    assert not (repo / "skillseal-team.zip").exists()
+    assert not setup._team_bundle_path("contoso/skills").exists()
 
 
 def test_reuse_rejects_public_key_file(tmp_path, keys):
@@ -495,7 +500,7 @@ def test_reuse_rejects_public_key_file(tmp_path, keys):
     with pytest.raises(setup.SetupError, match="private-key PEM"):
         setup.organization(repo, "Contoso", "contoso/skills", "main", False, True,
                            private_key=keys[1])
-    assert not (repo / "skillseal-team.zip").exists()
+    assert not setup._team_bundle_path("contoso/skills").exists()
 
 
 def test_private_key_option_only_for_organization(tmp_path, capsys):

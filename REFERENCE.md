@@ -168,6 +168,13 @@ creates this pair. Do not trust a cross-repository shared identity without a
 caller restriction. Older Skillseal versions do not enforce this field; upgrade
 verifiers before adopting shared-workflow signing.
 
+For multiple signing repositories, create a user policy with repeated
+`--github-workflow` options; each entry becomes a separate trusted signer and
+the policy applies across projects checked by that user. A single
+`--reusable-workflow` can be paired with multiple caller workflows. To add
+signers to an existing policy, preserve its settings and edit the
+`trusted_signers` array; `init --force` replaces the policy rather than merging.
+
 Where policies are read from:
 
 1. System: `/etc/skillseal/policy.json` (Windows: `%ProgramData%\skillseal\policy.json`). If it exists, it wins.
@@ -260,7 +267,7 @@ skillseal setup      [--bundle TEAM.zip] [--agent NAME] [--project DIR] [--yes]
 skillseal setup organization [--name NAME] [--repository OWNER/REPO] [--branch main]
                             [--upload-secret] [--private-key ORIGINAL.pem] [--project DIR] [--yes]
 skillseal setup enforce [--agent NAME] [--project DIR] [--yes]
-skillseal init       [--scope user|repo] [--mode enforce|warn|audit] [--github-workflow REF] [--identity ID --issuer URL]
+skillseal init       [--scope user|repo] [--mode enforce|warn|audit] [--github-workflow REF ...] [--identity ID --issuer URL]
                      [--reusable-workflow REF] [--public-key PEM] [--certificate-chain PEM ...] [--force]
 skillseal check      [--agent NAME ...] [--cwd DIR] [--policy FILE] [--json] [--no-cache]
 skillseal install    AGENT... [--scope project|user] [--project DIR] [--exe PATH]

@@ -67,10 +67,11 @@ sign them; Skillseal checks those approvals on your computer.
 
 1. Follow [Set up signing](APPROVAL.md) in your own skills repository.
    A personal GitHub account and private repository are fine.
-2. In that same folder, connect your machine using the package setup created:
+2. Connect your machine using the package setup created. The wizard prints its
+   location outside the repository, under `~/.skillseal/exports/`:
 
    ```text
-   skillseal setup --bundle skillseal-team.zip
+   skillseal setup --bundle "~/.skillseal/exports/OWNER/REPO/skillseal-team.zip"
    ```
 
 3. Continue with [Restart your agent](#3-restart-your-agent), then check and
