@@ -28,8 +28,12 @@ def test_check_readable_output(tmp_path, isolated_env, keys, capsys, mode):
     assert "Signer: test key" in out and "no skill.oms.sig" in out
     assert "~/.config/skillseal/policy.json" in out
     assert str(policy_path) not in out
-    assert ("guards request denial" in out) == (mode == "enforce")
-    assert ("tool calls are not blocked" in out) == (mode != "enforce")
+    descriptions = {
+        "enforce": "configured guards request blocking tool calls when a skill fails verification",
+        "warn": "shows a warning when a skill fails verification, but allows tool calls",
+        "audit": "logs verification results without warning or blocking tool calls",
+    }
+    assert f"Mode:     {mode} - {descriptions[mode]}" in out
     assert "\x1b" not in out
     assert not any(line.rstrip() != line for line in out.splitlines())
 

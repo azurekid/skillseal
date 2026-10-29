@@ -99,6 +99,26 @@ def test_init_reusable_workflow_binds_caller(isolated_env):
     assert main(["init", "--reusable-workflow", reusable, "--force"]) == 2
 
 
+def test_init_explains_selected_mode(isolated_env, capsys):
+    assert main(["init", "--mode", "warn"]) == 0
+    captured = capsys.readouterr()
+    out = captured.out
+    assert "Created policy:" in out
+    assert "Trusted signers: 0" in out
+    assert "Mode: warn - shows a warning when a skill fails verification, but allows tool calls" in out
+    assert "Warning: No trusted signers are configured" in captured.err
+
+
+def test_init_mode_help_explains_choices(capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["init", "--help"])
+    assert exc.value.code == 0
+    help_text = " ".join(capsys.readouterr().out.split())
+    assert "enforce requests blocking" in help_text
+    assert "warn allows with a warning" in help_text
+    assert "audit logs without warning or blocking" in help_text
+
+
 @no_system_policy
 def test_hook_subprocess_blocks(tmp_path, keys, isolated_env):
     proj = tmp_path / "proj"

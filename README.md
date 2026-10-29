@@ -42,6 +42,21 @@ when something no longer matches.
 In enforce mode, any discovered skill that fails verification causes the
 configured guard to request blocking of tool calls—not just calls from that skill.
 
+### Choose an enforcement mode
+
+Set `mode` in your policy, or choose one when creating it with
+`skillseal init --mode enforce|warn|audit`. The default is `enforce`.
+
+| Mode | When a skill fails verification |
+| --- | --- |
+| `enforce` | Blocks tool calls through the configured guard. |
+| `warn` | Shows a warning, but allows tool calls. |
+| `audit` | Records the check in `~/.cache/skillseal/audit.jsonl`; does not warn or block. |
+
+Use `audit` to observe results before enabling blocking, or `warn` when you want
+visible feedback without blocking. See the [policy reference](REFERENCE.md#the-trust-policy)
+for policy locations and precedence.
+
 Already approved a skill and copied it to another project? Its signature travels
 with it. Copy the whole folder, including `skill.oms.sig`, without editing the files.
 

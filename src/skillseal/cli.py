@@ -27,10 +27,18 @@ def _display_path(value: str) -> str:
         return str(path)
 
 
+def _mode_description(mode: str) -> str:
+    return {
+        "enforce": "configured guards request blocking tool calls when a skill fails verification",
+        "warn": "shows a warning when a skill fails verification, but allows tool calls",
+        "audit": "logs verification results without warning or blocking tool calls",
+    }[mode]
+
+
 def _print_check(results: list[Result], policy: Policy, agents: list[str]) -> None:
     print("Skillseal / Skill verification")
     print()
-    print(f"  Mode:     {policy.mode}")
+    print(f"  Mode:     {policy.mode} - {_mode_description(policy.mode)}")
     print(f"  Policy:   {', '.join(_display_path(p) for p in policy.sources) or 'Not configured'}")
     print(f"  Signers:  {len(policy.signers)} trusted")
     print(f"  Agents:   {', '.join(agents)}")
@@ -53,10 +61,6 @@ def _print_check(results: list[Result], policy: Policy, agents: list[str]) -> No
     if not results:
         print("No skills found in the selected agents' skill folders.")
     elif failed:
-        if policy.mode == "enforce":
-            print("Enforcement: configured guards request denial of tool calls until these skills are approved.")
-        else:
-            print(f"Enforcement: disabled in {policy.mode} mode; tool calls are not blocked.")
         print("Next: remove unapproved skills or have them reviewed and signed.")
     else:
         print("All discovered skills have a valid signature from a trusted signer.")
@@ -110,9 +114,15 @@ def cmd_init(a) -> int:
         policy["allow_repo_signers"] = False
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(policy, indent=2) + "\n", encoding="utf-8")
-    print(f"wrote {path} ({len(signers)} trusted signer(s), mode {a.mode})")
+    print(f"Created policy: {path}")
+    print(f"  Trusted signers: {len(signers)}")
+    print(f"  Mode: {a.mode} - {_mode_description(a.mode)}")
     if not signers:
-        print("warning: no trusted signers yet, so every skill will be blocked in enforce mode", file=sys.stderr)
+        print(
+            "Warning: No trusted signers are configured. Add a signer before enabling enforcement; "
+            "otherwise every skill will fail verification.",
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -299,7 +309,12 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("init", help="create a trust policy")
     s.add_argument("--scope", choices=["user", "repo"], default="user")
     s.add_argument("--project", default=".")
-    s.add_argument("--mode", choices=MODES, default="enforce")
+    s.add_argument("--mode", choices=MODES, default="enforce",
+                   help=(
+                       "how verification failures are handled: enforce requests blocking, "
+                       "warn allows with a warning, audit logs without warning or blocking "
+                       "(default: enforce)"
+                   ))
     s.add_argument("--github-workflow", metavar="OWNER/REPO/.github/workflows/FILE.yml@REF",
                    help="trust Sigstore signatures made by this GitHub Actions workflow")
     s.add_argument("--reusable-workflow", metavar="OWNER/REPO/.github/workflows/FILE.yml@REF",

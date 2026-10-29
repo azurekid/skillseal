@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2
+
+- Explain `enforce`, `warn` and `audit` modes in CLI output and `init --help`.
+- Clarify mode behavior, configuration and defaults in the README and reference.
+
 ## 0.4.1
 
 - Give individual developers and private repositories a first-class setup path,

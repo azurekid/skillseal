@@ -153,7 +153,7 @@ Example ([`examples/policies/user-policy.json`](examples/policies/user-policy.js
 
 | Field | Meaning |
 | --- | --- |
-| `mode` | `enforce` blocks, `warn` shows the problem but allows, `audit` only logs to `~/.cache/skillseal/audit.jsonl`. |
+| `mode` | `enforce` blocks tool calls, `warn` shows a warning but allows calls, and `audit` records checks in `~/.cache/skillseal/audit.jsonl` without warning or blocking. Set it with `skillseal init --mode enforce|warn|audit`; default: `enforce`. |
 | `trusted_signers` | `sigstore` (identity + issuer), `certificate` (chain of PEM files) or `public_key` (EC PEM). Relative paths are relative to the policy file. |
 | `skill_roots` | Extra folders to search for skills. |
 | `allow_repo_signers` | Let a repository's `.skillseal/policy.json` add signers. Default `false`. |
