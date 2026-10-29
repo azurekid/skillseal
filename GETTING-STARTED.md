@@ -2,11 +2,140 @@
 
 [Overview](README.md) | [Getting started](GETTING-STARTED.md) | [Approval guide](APPROVAL.md) | [Reference](REFERENCE.md)
 
+## Five-minute setup
+
+**Install once using [Step 1](#step-1-install-skillseal), then choose one box below.**
+You do not need to edit JSON or generate keys by hand.
+The guided commands require **v0.4.0 or newer**.
+If `skillseal demo` is not recognized, update your installation first.
+The five-minute target assumes installation, GitHub access and any company approvals
+are already in place; GitHub workflow wait times are outside Skillseal's control.
+
+### Just trying it
+
+```text
+skillseal demo
+```
+
+Expected: three `PASS` lines for approved, modified and unsigned skills.
+The two signed examples are included in the application. No extra download, key,
+GitHub account or settings change is needed. This is signature verification,
+not a test of your agent's enforcement.
+
+### Administrator: prepare once for your team
+
+Before starting: create or open a GitHub repository for your approved skills.
+Use a checkout you trust, install [GitHub CLI](https://cli.github.com), and run
+`gh auth login` with an account allowed to manage that repository's Actions secrets.
+Run this **at the root of that checkout**, not inside Skillseal's own source:
+
+```text
+skillseal setup organization --upload-secret
+```
+
+The wizard detects the GitHub repository, asks for your organization's display
+name, and explains the changes before asking for confirmation. It creates:
+
+* A signing workflow in `.github/workflows/approve-skills.yml`, using a reviewed,
+  commit-pinned Skillseal action. It runs only on the `main` branch or manually.
+* A signed welcome skill in `.agents/skills/skillseal-welcome`.
+* A public approval key in `.skillseal/approval.pub`.
+* A public **`skillseal-team.zip`** package to send to developers.
+
+It generates the private key for you, saves a protected backup **outside the
+repository** under `~/.skillseal-authorities/`, and uploads it to the repository's
+`SKILLSEAL_APPROVAL_PRIVATE_KEY` secret. The exact backup path is printed.
+Keep that backup secure; never commit or share it. The team ZIP contains no
+private key. The displayed fingerprint is the SHA256 of the public-key file.
+
+**Your remaining steps:**
+
+1. Review the generated public files, commit them and push to `main`.
+2. In GitHub's **Actions** tab, confirm **Approve skills** succeeds.
+   Branch rules must allow its signature commits. If your reviewed branch has a
+   different name, pass `--branch YOUR-BRANCH` during setup.
+3. Send `skillseal-team.zip` through your trusted company channel. Publish the
+   printed fingerprint separately if developers need to verify the sender.
+
+The scan gate is a basic heuristic, not a human reviewer. Protect the signing
+branch and require review before merging skill changes. Restrict changes to the
+workflow itself, because it can access the approval secret.
+
+For offline preparation or without GitHub CLI, use
+`skillseal setup organization --repository OWNER/REPO --name "Your team"`.
+It prints how to add the saved key as a GitHub secret later.
+Setup never commits, pushes, replaces an existing authority or overwrites an
+existing approval secret. If upload fails after preparation, the local public
+files and private backup remain; use the backup to add the secret, rather than
+rerunning setup to generate another authority.
+
+### Developer: accept the team package once
+
+Get the ZIP **from your administrator through a trusted channel**. Open your
+approved-skills project and run the following command. Pass the ZIP itself;
+there is no need to unzip it:
+
+```text
+skillseal setup --bundle skillseal-team.zip
+```
+
+Check the organization and fingerprint, then confirm. A fingerprint inside an
+unknown ZIP does not prove its sender. Copilot is the default agent. For another:
+
+```text
+skillseal setup --bundle skillseal-team.zip --agent claude
+```
+
+Choose `copilot`, `claude`, `codex`, `gemini` or `opencode`; repeat with another
+agent to configure multiple agents. OpenClaw remains an advanced, experimental
+integration. Setup installs hooks in your **user** settings, preserving other
+hooks and backing up changed files. Trust goes in the normal
+[user policy folder](#organization-approval-configuration), not the repository.
+Existing different policies, keys and IT-managed policies are never replaced.
+This guided package format supports one organization P-256 approval key.
+Additional external publishers and certificate authorities use the
+[advanced policy settings](REFERENCE.md#the-trust-policy).
+
+**Restart your agent.** Check that it loads its Skillseal hooks.
+Initially the policy is in **audit mode**: problems are reported, not blocked.
+Open or copy your team's approved skill folders, including their `skill.oms.sig`
+files, into an [agent-supported location](REFERENCE.md#where-each-agent-loads-skills).
+The administrator's welcome example already works in the repository for Copilot,
+Codex, Gemini and OpenCode. Claude Code users copy the complete welcome folder
+to `.claude/skills/skillseal-welcome` without changing the files.
+
+When checks pass, enable enforcement from your project, then follow
+[the host blocking test](#step-5-test-it-then-switch-on-blocking):
+
+```text
+skillseal check --agent copilot
+skillseal setup enforce
+```
+
+Use the same `--agent` when not using Copilot. Enabling enforcement requires an
+installed hook configuration and at least one discovered skill, with every
+discovered skill verified. It preserves revocations and other policy settings.
+The mode is shared by all guards using that user policy, so other projects can
+also become blocked. This readiness check cannot prove the host actually runs
+hooks; Copilot timeouts can still fail open.
+
+For automation, supply options such as `--name`, `--repository` and `--agent`,
+and use `--yes` only after independently approving the authority and changes.
+
+## Manual setup and installation reference
+
+The sections below cover installation, existing policies and advanced setup.
+For normal onboarding, install using Step 1 and return to the building blocks above.
+
 1. [Install skillseal](#step-1-install-skillseal)
 2. [Set your trust policy](#step-2-tell-skillseal-whom-to-trust)
 3. [Check your existing skills](#step-3-see-what-your-agents-can-load-today)
 4. [Connect your agent](#step-4-connect-skillseal-to-your-agent)
 5. [Test and enable blocking](#step-5-test-it-then-switch-on-blocking)
+
+**Just exploring?** After installing, [try the already-signed starter skills](#try-the-signed-starter-skills-first).
+You can see a successful verification without creating keys or changing your
+computer's settings.
 
 Need help? See [When something is blocked](#when-something-is-blocked) or [Remove skillseal](#remove-skillseal-again).
 
@@ -81,7 +210,8 @@ export PATH="$HOME/.local/bin:$PATH"
 skillseal --version
 ```
 
-That is it. Continue with **Step 2** below.
+That is it. Return to [Five-minute setup](#five-minute-setup), or use the manual
+steps below for an existing policy.
 
 Good to know:
 
@@ -103,6 +233,59 @@ uv tool install git+https://github.com/azurekid/skillseal
 
 Check that it works with `skillseal --version`. If the command is not found, run `pipx ensurepath` (or `uv tool update-shell`) and open a new terminal.
 
+### Try the signed starter skills first
+
+1. Download `skillseal-starter.zip` from the
+   [release assets](https://github.com/azurekid/skillseal/releases/latest).
+   Choose **v0.4.0 or newer**. Alternatively, download this repository using
+   **Code > Download ZIP**, extract it, and open its `examples/starter` folder.
+2. Extract the starter ZIP and open the extracted folder containing
+   `policy.json` in your terminal.
+3. If you have the GitHub CLI, you can check the published ZIP's build provenance:
+   `gh attestation verify skillseal-starter.zip --repo azurekid/skillseal`.
+   The release's `SHA256SUMS.txt` also includes its download checksum.
+4. Run this command (the same in PowerShell, macOS, and Linux):
+
+   ```text
+   skillseal verify --no-cache --policy policy.json skills/friendly-greeting skills/writing-checklist
+   ```
+
+Expected: both skills show `OK` and `Signer: Skillseal starter examples only`.
+They are already signed; you do not need a private key or GitHub secret.
+The demonstration policy is used **only for this command**. Nothing is copied
+into your real policy folder, and no agent hooks are installed.
+
+Want to see a failure? Edit the greeting's `SKILL.md`, save it, and rerun the
+command. That skill should now show `INVALID`. Extract a fresh copy to restore it.
+See the [starter instructions](examples/starter/README.md) for details.
+
+The starter public-key file, `starter-approval.pub`, has this SHA256 fingerprint:
+
+```text
+b22cd994bc688234edaf8df63f23a923101cb5079e23d1dd0c2ee77c1875ad33
+```
+
+Check it against this guide obtained from a source you trust:
+
+```bash
+# macOS
+shasum -a 256 starter-approval.pub
+# Linux
+sha256sum starter-approval.pub
+```
+
+```powershell
+# Windows
+(Get-FileHash .\starter-approval.pub -Algorithm SHA256).Hash
+```
+
+Hexadecimal letter case does not matter. A checksum supplied with an untrusted
+download is not independent proof of who published it.
+This demo key is not your organization's approval key. Do not copy the demo
+policy over your real policy or add demo trust to managed endpoints. For use
+in a real agent, have your team review and re-sign the examples with its own
+authority. Verification alone does not demonstrate host enforcement.
+
 ### Step 2: Tell skillseal whom to trust
 
 **Recommended for teams:** copy a reviewed organization policy and public key
@@ -113,14 +296,47 @@ explains the signing setup.
 
 #### Organization approval configuration
 
-Use the [public-key policy example](examples/policies/organization-key.json)
-with your organization's `approval.pub`, or the
-[certificate policy example](examples/policies/organization-certificate.json)
-with `approval-ca.pem`. Copy the chosen example as `policy.json` alongside its
-public trust file using [the instructions below](#use-a-policy-your-team-gave-you).
-Obtain both through a trusted administrative channel, not from an untrusted
-skill's repository. These files authorize your organization's approvals across
-all projects on that machine. Never copy the approval private key.
+Ask your team for **two files**:
+
+| File | What it is |
+| --- | --- |
+| `policy.json` | The settings that say whose approvals you trust |
+| `approval.pub` | Your organization's public approval key; safe to share |
+
+If your team uses certificates, the second file is `approval-ca.pem` instead.
+Your team can start from the [public-key policy example](examples/policies/organization-key.json)
+or [certificate policy example](examples/policies/organization-certificate.json).
+You do not need to edit JSON or run `skillseal init` when your team provides
+these files.
+
+**Where is the policy folder?** It is a settings folder on your computer, not
+the `examples/policies` folder in this repository:
+
+| Machine | Open this folder |
+| --- | --- |
+| macOS | Finder > Go > Go to Folder, then enter `~/.config/skillseal` |
+| Linux | Your home folder, then `.config/skillseal` (show hidden files if needed) |
+| Windows | File Explorer address bar: `%USERPROFILE%\.config\skillseal` |
+
+Create the folder if it does not exist. After copying, it should look like this:
+
+```text
+Your home folder/
+  .config/
+    skillseal/
+      policy.json
+      approval.pub
+```
+
+For example, the Mac location for user `rogier` is
+`/Users/rogier/.config/skillseal/`. A policy containing
+`"public_key": "approval.pub"` looks for that public key beside `policy.json`.
+Do not rename the file to `organization-key.json`: that is the example's name,
+not the installed settings filename.
+
+Obtain both files from your team through a trusted channel, not an untrusted
+skill's repository. Never copy `approval-private.pem` to a developer's settings
+folder. That secret belongs only in your protected signing setup.
 
 Skip the optional workflow configuration below and continue to step 3 after
 installing the policy. Start in audit mode; switch to enforce in step 5.
@@ -203,13 +419,21 @@ We start in **audit** mode: nothing is blocked yet, problems are only written to
 
 #### Use a policy your team gave you
 
-If your team lead sent you a ready `policy.json`, copy it into the location above **instead of running `skillseal init`**.
+If your team lead sent you `policy.json` and `approval.pub`, copy **both** into
+the folder above instead of running `skillseal init`. The commands below assume
+both files are in Downloads.
+
+**Already have a policy? Stop before copying.** These commands replace existing
+files. Ask your team to preserve existing signers and revocations rather than
+overwriting them. Managed devices may use a system-wide policy instead; follow
+your IT team's instructions.
 
 macOS or Linux (assuming the file is in Downloads):
 
 ```bash
 mkdir -p "$HOME/.config/skillseal"
 cp "$HOME/Downloads/policy.json" "$HOME/.config/skillseal/policy.json"
+cp "$HOME/Downloads/approval.pub" "$HOME/.config/skillseal/approval.pub"
 ```
 
 Windows PowerShell:
@@ -217,9 +441,18 @@ Windows PowerShell:
 ```powershell
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.config\skillseal" | Out-Null
 Copy-Item "$env:USERPROFILE\Downloads\policy.json" "$env:USERPROFILE\.config\skillseal\policy.json"
+Copy-Item "$env:USERPROFILE\Downloads\approval.pub" "$env:USERPROFILE\.config\skillseal\approval.pub"
 ```
 
 These commands use the default locations and replace an existing policy. If you use either environment override above, copy to that location instead. Only use a policy from someone you trust: it decides who may sign your skills. If the policy references a public key or certificate file, get that file too. Relative paths in the policy are relative to the folder containing `policy.json`.
+
+For certificate-based approval, replace `approval.pub` in the copy commands with
+`approval-ca.pem`, using the matching policy supplied by your team.
+Run `skillseal check` and look at the `Policy:` line to confirm which settings
+file is in use. A system-wide policy at `/etc/skillseal/policy.json` (macOS/Linux)
+or `%ProgramData%\skillseal\policy.json` (Windows) takes priority over your user
+file. `SKILLSEAL_POLICY` and `XDG_CONFIG_HOME` can also change the user location;
+ask IT if your `Policy:` line differs from these examples.
 
 Check the policy's `mode` before continuing. A shared policy may already use `enforce`, which blocks tools as soon as the hooks are connected. To start with logging only, set `"mode": "audit"` before step 4, if your team allows it.
 
@@ -257,39 +490,35 @@ skillseal check
 Example output:
 
 ```text
-   .-------.
-   |  S S  |   SKILLSEAL
-   |   v   |   Skill signature check
-    \     /
-     '---'
+Skillseal / Skill verification
 
-  Mode     audit
-  Policy   ~/.config/skillseal/policy.json
-  Signers  1 trusted
-  Agents   claude, copilot, codex, gemini, opencode, openclaw
+  Mode:     audit
+  Policy:   ~/.config/skillseal/policy.json
+  Signers:  1 trusted
+  Agents:   claude, copilot, codex, gemini, opencode, openclaw
 
-  NEEDS APPROVAL (2)
-  ------------------------------------------------------------
-  [FAIL] ~/.claude/skills/old-helper
-         unsigned
-         - no skill.oms.sig
-  [FAIL] ~/.claude/skills/.trash/pdf-tool
-         unsigned
-         - no skill.oms.sig
+Needs approval (2)
+  UNSIGNED  ~/.claude/skills/old-helper
+    - no skill.oms.sig
+  UNSIGNED  ~/.claude/skills/.trash/pdf-tool
+    - no skill.oms.sig
 
-  VERIFIED (1)
-  ------------------------------------------------------------
-  [OK] ~/code/my-project/.github/skills/deploy
-         verified | signer: approval workflow
+Verified (1)
+  OK  ~/code/my-project/.github/skills/deploy
+    Signer: Organization skill approval
 
-  Summary: 3 skills | 1 verified | 2 not approved
-  Audit mode: configured agent guards do not block these skills.
-  Next: remove unapproved skills or ask your team lead to sign them.
+Summary: 3 skills, 1 verified, 2 need approval.
+Enforcement: disabled in audit mode; tool calls are not blocked.
+Next: remove unapproved skills or have them reviewed and signed.
 ```
 
-Skills that need attention come first. Home paths are shortened to `~`; verification reasons stay visible. Use `skillseal check --json` for the full, unchanged machine-readable results without the banner.
+Skills that need attention come first, with explicit `UNSIGNED`, `INVALID`, or
+`REVOKED` status labels. Home paths are shortened to `~`; verification reasons
+stay visible. Output uses plain text without decorative banners or terminal
+control codes, so it remains readable in logs. Use `skillseal check --json` for
+the full, unchanged machine-readable results.
 
-Clean up every `[FAIL]` line before you go to enforce mode. For each one, either delete the folder, or ask your team lead to approve the skill. Watch out for hidden folders such as `~/.claude/skills/.trash`: they are checked too. Use `skillseal check --agent copilot` to only look at one agent.
+Resolve every entry under `Needs approval` before you go to enforce mode. For each one, either delete the folder, or ask your team lead to approve the skill. Watch out for hidden folders such as `~/.claude/skills/.trash`: they are checked too. Use `skillseal check --agent copilot` to only look at one agent.
 
 ### Step 4: Connect skillseal to your agent
 
@@ -398,10 +627,15 @@ skillseal install copilot claude codex gemini opencode --scope user
 
 ### Step 5: Test it, then switch on blocking
 
-1. Use your agent for a few days in audit mode. Problems are logged in `~/.cache/skillseal/audit.jsonl`.
-2. Run `skillseal check` again until there are no `[FAIL]` lines.
-3. Open `~/.config/skillseal/policy.json` and change `"mode": "audit"` to `"mode": "warn"`. Now the agent shows the problem but still continues.
-4. When that is quiet too, change it to `"mode": "enforce"`. Now the agent is blocked.
+1. Start in audit mode while checking existing skills. Problems are logged in `~/.cache/skillseal/audit.jsonl`.
+2. Run `skillseal check --agent copilot` until there are no entries under `Needs approval`.
+3. Run `skillseal setup enforce --agent copilot` from your approved-skills project and confirm.
+   Substitute your actual agent name. IT-managed policies must be changed by IT.
+4. Restart the agent and test its hooks below. A configuration file alone does not prove blocking works.
+
+Advanced/manual policies can also set `"mode": "warn"` for visible nonblocking
+warnings, or `"mode": "enforce"` directly in the authoritative policy. Guided
+enforcement checks readiness first and preserves the other policy fields.
 
 Quick test that blocking works (in enforce mode). `.agents/skills` is read by Copilot, Codex, Gemini and OpenCode; for Claude Code use `.claude/skills`:
 

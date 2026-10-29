@@ -11,6 +11,33 @@ permissions:
   contents: read
 
 jobs:
+  starter:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install .
+      - name: Verify published starter signatures and package
+        run: |
+          skillseal verify --no-cache --policy examples/starter/policy.json \
+            examples/starter/skills/friendly-greeting examples/starter/skills/writing-checklist
+          python -c "import shutil; shutil.make_archive('skillseal-starter', 'zip', 'examples/starter')"
+      - uses: actions/attest-build-provenance@v2
+        if: github.ref_type == 'tag'
+        with:
+          subject-path: skillseal-starter.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skillseal-starter.zip
+          path: skillseal-starter.zip
+          if-no-files-found: error
+
   build:
     strategy:
       fail-fast: false
@@ -46,6 +73,7 @@ jobs:
           mkdir -p "$HOME" "$RUNNER_TEMP/s/demo"
           printf -- '---\nname: demo\ndescription: demo\n---\nSay hi.\n' > "$RUNNER_TEMP/s/demo/SKILL.md"
           "$bin" --version | grep -F "skillseal ${GITHUB_REF_NAME#v}" || [ "$GITHUB_REF_TYPE" != tag ]
+          (cd "$RUNNER_TEMP" && "$bin" demo)
           "$bin" sign --no-scan "$RUNNER_TEMP/s/demo"
           "$bin" init --github-workflow "$GITHUB_WORKFLOW_REF"
           "$bin" verify --no-cache "$RUNNER_TEMP/s/demo"
@@ -103,7 +131,7 @@ jobs:
 
   publish:
     if: github.ref_type == 'tag'
-    needs: build
+    needs: [build, starter]
     runs-on: ubuntu-latest
     permissions:
       contents: write

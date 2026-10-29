@@ -180,6 +180,11 @@ skillseal reuses OMS and adds the missing parts: a trust policy, stricter verifi
 ### Command reference
 
 ```text
+skillseal demo                         # isolated embedded signature demonstration
+skillseal setup      [--bundle TEAM.zip] [--agent NAME] [--project DIR] [--yes]
+skillseal setup organization [--name NAME] [--repository OWNER/REPO] [--branch main]
+                            [--upload-secret] [--project DIR] [--yes]
+skillseal setup enforce [--agent NAME] [--project DIR] [--yes]
 skillseal init       [--scope user|repo] [--mode enforce|warn|audit] [--github-workflow REF] [--identity ID --issuer URL]
                      [--reusable-workflow REF] [--public-key PEM] [--certificate-chain PEM ...] [--force]
 skillseal check      [--agent NAME ...] [--cwd DIR] [--policy FILE] [--json] [--no-cache]
@@ -194,6 +199,29 @@ skillseal hook       AGENT [EVENT]      # called by the agent, reads the hook JS
 ```
 
 `AGENT` is one of `claude`, `copilot`, `codex`, `gemini`, `opencode`, `openclaw`. `install` and `uninstall` default to `--scope project`; on a developer machine use `--scope user`.
+
+Guided setup defaults to Copilot and supports the five nonexperimental agents.
+See the [onboarding walkthrough](GETTING-STARTED.md#five-minute-setup).
+It never treats an imported package's self-declared organization or checksum as
+independent proof of identity; accepting it grants authority to its public key.
+`--yes` explicitly authorizes that trust and the displayed changes.
+
+Team packages use format `skillseal-team-v1`: a ZIP containing exactly
+`team.json`, `policy.json` and `approval.pub`. The manifest identifies the
+organization and SHA256 of the public PEM file. The policy must be audit mode,
+disallow repository signers, and contain exactly that single P-256 key, named
+with the organization. The public key must use canonical SubjectPublicKeyInfo
+PEM with no trailing content. No roots, extra signers, scripts, private keys or policy
+overrides can be imported. Packages larger than 3 MiB or with entries larger
+than 1 MiB, duplicate/unexpected names, encryption or symlinks are rejected.
+Entries are read as data, never extracted or executed.
+
+Setup stages hook merges before changing live files, writes settings atomically,
+and retains `.backup-<id>` copies when changing existing files. An I/O failure
+rolls back files already written; a crash or power loss is not a multi-file
+transaction. Organization key backup and GitHub upload are separate operations.
+An interrupted or failed upload may require adding the saved key as the secret
+manually; do not rotate an authority simply to retry onboarding.
 
 ### Development
 

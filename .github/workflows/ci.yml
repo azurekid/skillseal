@@ -34,6 +34,9 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install ".[test]"
       - run: python -m pytest -q
+      - name: Run installed starter demonstration outside the checkout
+        working-directory: ${{ runner.temp }}
+        run: skillseal demo
       - name: Run offline trust and emergency revocation lab
         run: python examples/trust-lab.py
       - name: Test macOS and Linux installer

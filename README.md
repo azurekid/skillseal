@@ -10,6 +10,24 @@ It is open source, works on macOS, Linux and Windows, and needs no server, no MD
 
 **[Get started on your machine](GETTING-STARTED.md)**
 
+## Three building blocks
+
+After [installing Skillseal](GETTING-STARTED.md#step-1-install-skillseal), choose your role:
+
+| Your goal | Command | What it does |
+| --- | --- | --- |
+| Try it | `skillseal demo` | Verifies embedded signed examples, then shows edited and unsigned skills being rejected. Changes no trust settings. |
+| Administrator | `skillseal setup organization --upload-secret` | Prepares your GitHub skills repository, creates an approval key, uploads its secret after confirmation, and builds a public team package. |
+| Developer | `skillseal setup --bundle skillseal-team.zip` | Shows the organization and key fingerprint, asks you to trust it, and installs audit-mode hooks. Defaults to Copilot. |
+
+Use `--agent claude`, `codex`, `gemini` or `opencode` for another agent.
+Once your skills verify and you have tested your agent's hooks, run
+`skillseal setup enforce` in your project to enable blocking.
+
+The target is a five-minute local setup, not a guarantee about GitHub permissions,
+workflow queue times or company approvals. These commands require **v0.4.0 or newer**.
+See the [short role-based walkthrough](GETTING-STARTED.md#five-minute-setup).
+
 ## The challenge
 
 A skill is a folder with a `SKILL.md` file and sometimes scripts or other files. Agents like Claude Code, GitHub Copilot, Codex, Gemini CLI and OpenCode discover skills in project and user folders.
@@ -71,7 +89,9 @@ Run the [offline trust and revocation lab](examples/TRUST-LAB.md), or follow the
 distribution is your responsibility: offline devices cannot learn about a new
 revocation until their local policy is updated.
 
-For GitHub approval, use the [small caller workflow](examples/approve-skills.yml)
+The organization wizard generates a workflow using a commit-pinned signing
+action, without a moving shared-workflow reference. For a manually managed
+reusable setup instead, use the [small caller workflow](examples/approve-skills.yml)
 in your skills repository. It delegates to Skillseal's
 [reusable approval workflow](.github/workflows/approve-skills.yml). Follow the
 [setup instructions](APPROVAL.md#2-add-the-approval-workflow).
@@ -86,7 +106,7 @@ shared-workflow verification requires a version newer than 0.3.0.
 | [Approval guide](APPROVAL.md) | Set up scanning and signing, share the policy and distribute signed skills |
 | [Technical reference](REFERENCE.md) | Agent hooks, skill locations, policy precedence, verification rules, limits and commands |
 | [Trust lab](examples/TRUST-LAB.md) | Reproduce internal/external trust, tamper detection, withdrawal, and recovery without a server |
-| [Release notes](CHANGELOG.md) | Changes and validation requirements for the next release |
+| [Release notes](CHANGELOG.md) | Changes included in each release |
 
 Using VS Code? Start with [the VS Code instructions](GETTING-STARTED.md#vs-code). Other tools: [Copilot CLI](GETTING-STARTED.md#github-copilot-cli), [Claude Code](GETTING-STARTED.md#claude-code), [Codex](GETTING-STARTED.md#codex-cli), [Gemini](GETTING-STARTED.md#gemini-cli) and [OpenCode](GETTING-STARTED.md#opencode). OpenClaw support is experimental and not tested.
 

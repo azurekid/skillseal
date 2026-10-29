@@ -2,6 +2,21 @@
 
 [Overview](README.md) | [Getting started](GETTING-STARTED.md) | [Approval guide](APPROVAL.md) | [Reference](REFERENCE.md)
 
+## Recommended: guided repository setup
+
+Run `skillseal setup organization --upload-secret` from the root of your team's
+GitHub skills checkout. It generates an organization approval authority, a
+commit-pinned signing workflow, a signed welcome skill and the public
+`skillseal-team.zip` developer package. It confirms trust changes, keeps a private
+backup outside Git and refuses to replace an existing secret or setup.
+You review, commit and push the generated public files; the wizard never does that
+for you. Developers run `skillseal setup --bundle skillseal-team.zip`.
+
+Follow the [short administrator/developer walkthrough](GETTING-STARTED.md#five-minute-setup)
+first. These commands require **v0.4.0 or newer**.
+The rest of this guide is the manual reference for custom policies, dedicated
+certificates, multiple trusted publishers and reusable workflows.
+
 ### 1. Create a skills repository
 
 Make one repository (for example `YOUR-ORG/agent-skills`) with one folder per skill:
@@ -119,6 +134,20 @@ chmod 600 approval-private.pem
 openssl pkey -in approval-private.pem -pubout -out approval.pub
 ```
 
+For a repository secret, open the repository **on GitHub**, then:
+
+1. Select **Settings > Secrets and variables > Actions**.
+2. Select **New repository secret**.
+3. Enter the name `SKILLSEAL_APPROVAL_PRIVATE_KEY`.
+4. Open `approval-private.pem` locally in a text editor. Copy its entire contents,
+   including the `BEGIN PRIVATE KEY` and `END PRIVATE KEY` lines, into the
+   secret's value. Select **Add secret**. Never paste this value in an issue,
+   chat, workflow YAML, or public file.
+
+The caller example passes that secret to the reusable signing workflow. You
+cannot retrieve the secret's value from GitHub afterward; keep a protected
+backup according to your organization's key-management rules.
+
 Upload `approval-private.pem` as the GitHub Actions secret
 `SKILLSEAL_APPROVAL_PRIVATE_KEY`. Use a restricted organization secret shared
 only with approved signing repositories, or a repository secret. Never commit
@@ -172,6 +201,14 @@ A signature proves **who approved** a skill and that it **did not change**. It d
 No `init` command or workflow identity is required. Distribute
 [`organization-key.json`](examples/policies/organization-key.json) as
 `policy.json`, with `approval.pub` beside it in the user/system policy directory.
+For a normal user installation, that folder is `~/.config/skillseal/` on
+macOS/Linux, or `%USERPROFILE%\.config\skillseal\` on Windows. The installed files
+must be named `policy.json` and `approval.pub`; `examples/policies/` is only a
+source of templates, not a settings folder. Give developers both files and the
+[step-by-step copy instructions](GETTING-STARTED.md#use-a-policy-your-team-gave-you).
+If your administrators deploy a system policy, follow their managed location
+instead. Never send the private signing key to developers.
+
 The policy contains:
 
 ```json

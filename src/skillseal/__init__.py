@@ -1,6 +1,6 @@
 """skillseal: only run agent skills that were approved and signed."""
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 SIGNATURE_FILE = "skill.oms.sig"
 SKILL_FILE = "SKILL.md"

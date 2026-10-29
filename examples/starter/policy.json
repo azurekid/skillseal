@@ -1,0 +1,12 @@
+{
+  "mode": "enforce",
+  "allow_repo_signers": false,
+  "trusted_signers": [
+    {
+      "name": "Skillseal starter examples only",
+      "type": "public_key",
+      "public_key": "starter-approval.pub"
+    }
+  ],
+  "revoked_skills": {}
+}

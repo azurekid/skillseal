@@ -1,6 +1,25 @@
 # Changelog
 
-## 0.3.1 (unreleased)
+## 0.4.0
+
+- Add `skillseal demo`, with embedded signed examples in wheels and standalone builds.
+- Add guided `setup organization` repository scaffolding, protected private-key
+  backup, explicit GitHub secret upload, a commit-pinned signing action, and a
+  public-only team onboarding ZIP.
+- Add `setup --bundle` with explicit authority confirmation, strict bounded ZIP
+  validation, audit-first user hooks, backups, rollback, and protection for
+  existing authorities and managed policies. Add readiness-gated `setup enforce`.
+- Make role-based administrator/developer building blocks the primary onboarding
+  path; retain manual instructions for advanced trust arrangements.
+- Add two pre-signed starter skills, an explicit demo-only trust policy, a public
+  key fingerprint, and a checksummed/attested starter ZIP in release assets.
+- Clarify user policy folders, required filenames, and copying both the policy
+  and public key for nontechnical users.
+- Replace decorative CLI check output with a compact plain-text report, explicit
+  approval statuses, consistent verification details, and clear next steps.
+  JSON output, hook responses, and exit codes remain unchanged.
+
+## 0.3.1
 
 - Support organization approval keys and dedicated certificate anchors in the
   action and reusable workflow, with explicitly passed GitHub secrets.

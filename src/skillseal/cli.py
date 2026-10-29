@@ -28,61 +28,57 @@ def _display_path(value: str) -> str:
 
 
 def _print_check(results: list[Result], policy: Policy, agents: list[str]) -> None:
-    print(r"   .-------.")
-    print(r"   |  S S  |   SKILLSEAL")
-    print(r"   |   v   |   Skill signature check")
-    print(r"    \     /")
-    print(r"     '---'")
+    print("Skillseal / Skill verification")
     print()
-    print(f"  Mode     {policy.mode}")
-    print(f"  Policy   {', '.join(_display_path(p) for p in policy.sources) or '(none)'}")
-    print(f"  Signers  {len(policy.signers)} trusted")
-    print(f"  Agents   {', '.join(agents)}")
+    print(f"  Mode:     {policy.mode}")
+    print(f"  Policy:   {', '.join(_display_path(p) for p in policy.sources) or 'Not configured'}")
+    print(f"  Signers:  {len(policy.signers)} trusted")
+    print(f"  Agents:   {', '.join(agents)}")
     print()
     if not policy.signers:
-        print("  WARNING: No trusted signers configured.")
-        print("  Run skillseal init with your team's signer before using enforce mode.")
+        print("Warning: No trusted signers configured.")
+        print("  Configure your organization's trust policy before enabling enforcement.")
         print()
     failed = [r for r in results if not r.ok]
     verified = [r for r in results if r.ok]
-    for title, group in (("NEEDS APPROVAL", failed), ("VERIFIED", verified)):
+    for title, group in (("Needs approval", failed), ("Verified", verified)):
         if not group:
             continue
-        print(f"  {title} ({len(group)})")
-        print("  " + "-" * 60)
+        print(f"{title} ({len(group)})")
         for r in group:
-            mark = "OK" if r.ok else "FAIL"
-            print(f"  [{mark}] {_display_path(r.path)}")
-            print(f"         {r.status}" + (f" | signer: {r.signer}" if r.signer else ""))
-            for reason in r.reasons[:20]:
-                print(f"         - {reason}")
-            if len(r.reasons) > 20:
-                print(f"         ... {len(r.reasons) - 20} more reasons (use --json to see all)")
+            _print_result(r)
         print()
-    print(f"  Summary: {len(results)} skills | {len(verified)} verified | {len(failed)} not approved")
+    noun = "skill" if len(results) == 1 else "skills"
+    print(f"Summary: {len(results)} {noun}, {len(verified)} verified, {len(failed)} need approval.")
     if not results:
-        print("  No skills found in the selected agents' skill folders.")
+        print("No skills found in the selected agents' skill folders.")
     elif failed:
         if policy.mode == "enforce":
-            print("  Enforce mode: configured agent guards block tool use until these skills are approved.")
+            print("Enforcement: configured guards request denial of tool calls until these skills are approved.")
         else:
-            print(f"  {policy.mode.capitalize()} mode: configured agent guards do not block these skills.")
-        print("  Next: remove unapproved skills or ask your team lead to sign them.")
+            print(f"Enforcement: disabled in {policy.mode} mode; tool calls are not blocked.")
+        print("Next: remove unapproved skills or have them reviewed and signed.")
     else:
-        print("  All discovered skills have a valid signature from a trusted signer.")
-    print()
+        print("All discovered skills have a valid signature from a trusted signer.")
 
 
-def _print_results(results, as_json: bool) -> None:
+def _print_result(result: Result) -> None:
+    label = "OK" if result.ok else result.status.upper()
+    print(f"  {label}  {_display_path(result.path)}")
+    if result.signer:
+        print(f"    Signer: {result.signer}")
+    for reason in result.reasons[:20]:
+        print(f"    - {reason}")
+    if len(result.reasons) > 20:
+        print(f"    ... {len(result.reasons) - 20} more reasons (use --json to see all)")
+
+
+def _print_results(results: list[Result], as_json: bool) -> None:
     if as_json:
         print(json.dumps([r.to_dict() for r in results], indent=2))
         return
     for r in results:
-        mark = "OK  " if r.ok else "FAIL"
-        extra = f"  signer: {r.signer}" if r.ok else ""
-        print(f"[{mark}] {r.path}  ({r.status}){extra}")
-        for reason in r.reasons[:20]:
-            print(f"       - {reason}")
+        _print_result(r)
 
 
 def cmd_init(a) -> int:
@@ -248,10 +244,55 @@ def cmd_uninstall(a) -> int:
     return 0
 
 
+def cmd_demo(a) -> int:
+    from .setup import demo
+
+    return demo()
+
+
+def cmd_setup(a) -> int:
+    from .setup import SETUP_AGENTS, _answer, enable_enforcement, join_team, organization
+
+    if a.action == "organization":
+        if a.bundle or a.agent != "copilot":
+            raise PolicyError("Organization setup creates the public team package. Select --bundle and --agent during developer setup instead.")
+        return organization(Path(a.project), a.name, a.repository, a.branch, a.upload_secret, a.yes)
+    if a.name or a.repository or a.upload_secret or a.branch != "main":
+        raise PolicyError("--name, --repository, --branch and --upload-secret belong to setup organization.")
+    if a.bundle and a.action == "enforce":
+        raise PolicyError("Use setup --bundle to join a team, or setup enforce to enable blocking; not both.")
+    agent = _answer(a.agent, "Choose your agent: " + ", ".join(SETUP_AGENTS), "copilot")
+    if agent not in SETUP_AGENTS:
+        raise PolicyError("Choose one of: " + ", ".join(SETUP_AGENTS))
+    if a.action == "enforce":
+        return enable_enforcement(agent, a.yes, Path(a.project).resolve())
+    bundle = _answer(a.bundle, "Path to the team package your administrator sent")
+    exe = _default_exe()
+    if exe == "skillseal":
+        raise PolicyError("Skillseal is not on PATH. Open a new terminal after installation, then retry setup.")
+    return join_team(Path(bundle).expanduser(), agent, exe, a.yes, Path(a.project).resolve())
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="skillseal", description="Only run agent skills that were approved and signed.")
     p.add_argument("--version", action="version", version=f"skillseal {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    s = sub.add_parser("demo", help="try signed starter skills without changing your settings")
+    s.set_defaults(func=cmd_demo)
+
+    s = sub.add_parser("setup", help="guided team onboarding, repository preparation, or enforcement")
+    s.add_argument("action", nargs="?", choices=["organization", "enforce"])
+    s.add_argument("--bundle", help="public team ZIP received through a trusted channel")
+    s.add_argument("--agent", default="copilot", choices=["copilot", "claude", "codex", "gemini", "opencode"],
+                   help="agent to configure (default: copilot)")
+    s.add_argument("--project", default=".", help="project/repository directory (default: current folder)")
+    s.add_argument("--name", help="organization display name")
+    s.add_argument("--repository", help="GitHub signing repository, OWNER/REPO")
+    s.add_argument("--branch", default="main", help="reviewed signing branch (default: main)")
+    s.add_argument("--upload-secret", action="store_true", help="upload a new approval key using authenticated GitHub CLI")
+    s.add_argument("--yes", action="store_true", help="explicitly approve displayed trust/configuration changes without prompting")
+    s.set_defaults(func=cmd_setup)
 
     s = sub.add_parser("init", help="create a trust policy")
     s.add_argument("--scope", choices=["user", "repo"], default="user")
@@ -334,6 +375,17 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     except ScanError as exc:
         print(f"scan error: {exc}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        if args.cmd not in ("setup", "demo"):
+            raise
+        print("Cancelled. Any saved approval-key backup remains available; no further changes will be made.",
+              file=sys.stderr)
+        return 130
+    except (OSError, ValueError, EOFError, SignError) as exc:
+        if args.cmd not in ("setup", "demo"):
+            raise
+        print(f"Setup could not finish: {exc or 'Input ended before setup was confirmed.'}", file=sys.stderr)
         return 2
 
 
