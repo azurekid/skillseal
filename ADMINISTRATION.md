@@ -13,6 +13,7 @@ only when you need to customize signing or manage trust.
 - [Use keyless signing](#optional-keyless-workflow-trust)
 - [Trust NVIDIA's signature](#trust-an-existing-nvidia-signature)
 - [Withdraw approval](#emergency-trust-revocation)
+- [Find hooks and check platform coverage](#hook-locations-and-platform-tests)
 - [Manage device-wide hooks](#hooks-that-users-cannot-switch-off)
 
 ## 1. Create a skills repository
@@ -428,6 +429,19 @@ does not undo previous tool actions or terminate running agents.
   without blocking.
 
 For an offline demonstration, run the [trust lab](examples/TRUST-LAB.md).
+
+## Hook locations and platform tests
+
+The [hook location table](REFERENCE.md#what-the-hook-adds-per-agent) lists
+user-wide and project files for Copilot, Claude Code, Codex, Gemini, OpenCode
+and experimental OpenClaw, including Windows path guidance.
+Hooks and plugins are separate from the trust policy.
+
+CI tests Linux, Windows and macOS. It checks generated configurations, runs
+hook commands in real shells and tests OpenCode through a Node.js harness.
+It does not run every agent application end-to-end; OpenClaw is untested.
+See [test coverage and skips](REFERENCE.md#cross-platform-test-coverage).
+Restart your agent after installation and test that blocking actually works.
 
 ## Hooks that users cannot switch off
 

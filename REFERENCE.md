@@ -37,11 +37,36 @@ skillseal uses the [OpenSSF Model Signing (OMS)](https://github.com/sigstore/mod
 | Codex CLI / VS Code (Codex target) | `~/.codex/hooks.json` | `.codex/hooks.json` | `PreToolUse` |
 | Gemini CLI | `~/.gemini/settings.json` | `.gemini/settings.json` | `BeforeTool` (answers `{"decision":"deny"}`) |
 | OpenCode | `~/.config/opencode/plugins/skillseal.js` | `.opencode/plugins/skillseal.js` | `tool.execute.before` (plugin throws) |
-| OpenClaw (experimental) | `~/.openclaw/policies/skillseal-guard.ts` | same | `before_tool_call` |
+| OpenClaw (experimental) | `~/.openclaw/policies/skillseal-guard.ts` | Same user-wide file | `before_tool_call` |
+
+`~` means your home directory (`%USERPROFILE%` on Windows). Project paths are
+relative to the project root. Claude Code, Codex and Gemini store hooks in
+their configuration files; OpenCode uses a JavaScript plugin. Restart the
+agent after installation, especially OpenCode, which loads its plugin at startup.
+
+These are hook/plugin locations, not trust-policy files. The user trust policy
+normally lives at `~/.config/skillseal/policy.json`, including on Windows.
+See [policy locations and precedence](#the-trust-policy).
 
 Blocking hooks are written as `skillseal hook ... || exit 2` for `sh` and `cmd.exe`, and as `& 'skillseal' hook ...; if (-not $?) { exit 2 }` for PowerShell. Claude Code hooks also set `"onFailure": "block"`, and on Windows they use exec form. The OpenCode plugin throws on any error. The generated commands request blocking on a crash or missing binary; host timeout behavior still applies, as described under [limits](#honest-limits). For Copilot and Claude a `SessionStart` hook also tells the agent why tools are blocked.
 
-The [test suite](tests/test_hooks_install.py) runs the written hook commands in the real shells (`sh` on macOS and Linux; `cmd.exe`, Windows PowerShell 5.1, `pwsh` and exec form on Windows) for an unsigned skill, a signed skill and a missing binary.
+#### Cross-platform test coverage
+
+[CI](.github/workflows/ci.yml) runs the Python test suite, installed demo and
+trust/revocation lab on **Linux, Windows and macOS**, with Python 3.10 and 3.13.
+
+The [hook tests](tests/test_hooks_install.py) cover:
+
+- Generated configurations and hook commands for Copilot, Claude Code, Codex
+  and Gemini, using signed skills, unsigned skills and a missing executable.
+- Real shell execution: `sh` on Linux/macOS; `cmd.exe`, Windows PowerShell 5.1,
+  `pwsh` and exec-form commands on Windows. Shell-specific tests skip when
+  that shell is unavailable.
+- The OpenCode plugin in a Node.js harness. These tests skip if Node.js or
+  the required installed Skillseal executable is unavailable.
+
+This is not an end-to-end test of every agent application. Test blocking in
+your installed agent too. **OpenClaw is experimental and untested.**
 
 Skills that an agent puts in the prompt without a tool call are covered by the same rule: while any loadable skill fails, the agent cannot use tools.
 
