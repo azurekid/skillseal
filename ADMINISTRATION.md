@@ -311,6 +311,46 @@ Every listed workflow is trusted to sign any discovered skill. Entries do not re
 
 Developers copy or clone the signed skill folders into one of the skill folders of their agent (see the [skill locations table](REFERENCE.md#where-each-agent-loads-skills)), including `skill.oms.sig`. Projects can also commit signed skills in `.github/skills` or `.claude/skills`.
 
+### Trust an existing NVIDIA signature
+
+The [NVIDIA DiffDock skill](https://github.com/NVIDIA/skills/tree/main/skills/bionemo-diffdock-nim)
+already includes `skill.oms.sig`. You can verify NVIDIA's approval without
+re-signing the skill:
+
+1. Obtain [NVIDIA's root certificate](https://github.com/NVIDIA/skills/blob/main/nv-agent-root-cert.pem)
+   from a source you trust. Confirm its provenance before accepting it as a
+   trust anchor; a certificate shipped with a skill is not automatically trusted.
+   Save it as `nv-agent-root-cert.pem` beside your user policy, normally in
+   `~/.config/skillseal/` (Windows: `%USERPROFILE%\.config\skillseal\`).
+2. Append this object to the existing policy's `trusted_signers` array, preserving
+   its other signers and settings. The certificate path is relative to the policy:
+
+   ```json
+   {
+     "name": "NVIDIA",
+     "type": "certificate",
+     "certificate_chain": ["nv-agent-root-cert.pem"]
+   }
+   ```
+
+   If a system policy is installed, ask its administrator to add the signer
+   there instead; the system policy takes precedence over your user policy.
+   Do not use `skillseal init --force` to add this entry: it replaces the policy.
+3. Copy the complete `bionemo-diffdock-nim` folder, including its signature and
+   all supporting files, into an [agent skill folder](REFERENCE.md#where-each-agent-loads-skills).
+   Do not edit the signed files. Verify it and then check all discovered skills:
+
+   ```text
+   skillseal verify /path/to/bionemo-diffdock-nim
+   skillseal check
+   ```
+
+**Trust scope:** this authorizes skills signed under NVIDIA's certificate across
+the projects using this policy, not only DiffDock. A valid signature establishes
+provenance and integrity, not that the instructions are safe for your use case.
+If you only want to approve this specific skill, review and sign that copy with
+your own approval key instead of adding NVIDIA as a trusted signer.
+
 ### Sign without GitHub Actions
 
 ```bash

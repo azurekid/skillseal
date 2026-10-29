@@ -159,6 +159,10 @@ Example ([`examples/policies/user-policy.json`](examples/policies/user-policy.js
 | `allow_repo_signers` | Let a repository's `.skillseal/policy.json` add signers. Default `false`. |
 | `revoked_skills` | Object mapping lowercase `skillseal digest` SHA256 content identifiers to nonempty incident reasons. Default `{}`. Only the authoritative policy supplies these denials; repository layers cannot add or clear them. |
 
+For a complete third-party example, see
+[trusting NVIDIA's existing DiffDock signature](ADMINISTRATION.md#trust-an-existing-nvidia-signature),
+including certificate placement, preserving existing signers and trust scope.
+
 Sigstore entries can also set `github_workflow` to an exact caller workflow URL.
 For shared workflows, `identity` is the reusable workflow URI and
 `github_workflow` is your caller URI. Verification checks the caller's signed
