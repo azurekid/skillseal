@@ -43,6 +43,21 @@ def _print_check(results: list[Result], policy: Policy, agents: list[str]) -> No
     print(f"  Signers:  {len(policy.signers)} trusted")
     print(f"  Agents:   {', '.join(agents)}")
     print()
+    if policy.signers:
+        print("Trusted signers")
+        for signer in policy.signers:
+            print(f"  {signer.name} ({signer.type})")
+            if signer.type == "sigstore":
+                print(f"    Identity: {signer.identity}")
+                print(f"    Issuer: {signer.issuer}")
+                if signer.github_workflow:
+                    print(f"    GitHub workflow: {signer.github_workflow}")
+            elif signer.type == "public_key":
+                print(f"    Public key: {_display_path(signer.public_key)}")
+            elif signer.type == "certificate":
+                for certificate in signer.certificate_chain:
+                    print(f"    Certificate: {_display_path(certificate)}")
+        print()
     if not policy.signers:
         print("Warning: No trusted signers configured.")
         print("  Configure your organization's trust policy before enabling enforcement.")

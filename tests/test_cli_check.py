@@ -5,7 +5,7 @@ import pytest
 
 from conftest import make_skill, write_policy
 from skillseal.cli import build_parser, cmd_check, _print_check, _print_results
-from skillseal.policy import Policy
+from skillseal.policy import Policy, Signer
 from skillseal.sign import sign_skill
 from skillseal.verify import Result
 
@@ -27,6 +27,8 @@ def test_check_readable_output(tmp_path, isolated_env, keys, capsys, mode):
     assert out.index(str(unsigned)) < out.index(str(signed))
     assert "Signer: test key" in out and "no skill.oms.sig" in out
     assert "~/.config/skillseal/policy.json" in out
+    assert "Trusted signers\n  test key (public_key)" in out
+    assert f"Public key: {keys[1]}" in out
     assert str(policy_path) not in out
     descriptions = {
         "enforce": "configured guards request blocking tool calls when a skill fails verification",
@@ -54,6 +56,45 @@ def test_check_empty_and_no_signers(tmp_path, capsys):
     assert "No trusted signers configured" in out
     assert "No skills found" in out
     assert "All discovered skills" not in out
+
+
+def test_check_lists_all_trusted_authorities_without_skills(capsys):
+    policy = Policy(signers=[
+        Signer("Personal approvals", "public_key",
+               public_key=str(Path.home() / ".config/skillseal/approval.pub")),
+        Signer("Workflow approvals", "sigstore",
+               identity="https://github.com/team/security/.github/workflows/sign.yml@v1",
+               issuer="https://token.actions.githubusercontent.com",
+               github_workflow="https://github.com/team/skills/.github/workflows/approve.yml@refs/heads/main"),
+        Signer("Certificate approvals", "certificate",
+               certificate_chain=("/trust/leaf.pem", "/trust/root.pem")),
+    ])
+    _print_check([], policy, ["copilot"])
+    out = capsys.readouterr().out
+    assert "Signers:  3 trusted" in out
+    assert "Trusted signers\n  Personal approvals (public_key)" in out
+    assert "Public key: ~/.config/skillseal/approval.pub" in out
+    assert "Workflow approvals (sigstore)" in out
+    assert f"Identity: {policy.signers[1].identity}" in out
+    assert f"Issuer: {policy.signers[1].issuer}" in out
+    assert f"GitHub workflow: {policy.signers[1].github_workflow}" in out
+    assert "Certificate approvals (certificate)" in out
+    assert "Certificate: /trust/leaf.pem" in out
+    assert "Certificate: /trust/root.pem" in out
+    assert out.index("Trusted signers") < out.index("No skills found")
+
+
+def test_check_sigstore_without_caller_constraint(capsys):
+    policy = Policy(signers=[
+        Signer("Reviewer", "sigstore", identity="reviewer@example.test",
+               issuer="https://issuer.example.test"),
+    ])
+    _print_check([], policy, ["copilot"])
+    out = capsys.readouterr().out
+    assert "Reviewer (sigstore)" in out
+    assert "Identity: reviewer@example.test" in out
+    assert "Issuer: https://issuer.example.test" in out
+    assert "GitHub workflow:" not in out
 
 
 def test_check_all_verified_and_reason_overflow(capsys):

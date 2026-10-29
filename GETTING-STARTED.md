@@ -147,6 +147,10 @@ files. Open the project that contains those skills, then run:
 skillseal check
 ```
 
+The output lists the effective trusted signers, including their public key or
+certificate paths, or their Sigstore identity, issuer and any GitHub workflow
+restriction. Check that these match the approvals you intend to trust.
+
 Expected: skills show `OK`. If a skill needs approval, review it and
 [run your signing workflow](APPROVAL.md#approve-another-skill), or get an approved
 copy from its maintainer. **Do not edit signed files or approve unknown signers to

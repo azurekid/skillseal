@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Show each effective trusted signer's name, type and key/certificate paths or
+  Sigstore identity constraints in readable `skillseal check` output.
+  JSON output remains unchanged.
 - Let confirmed bundle setup replace the exact empty default user policy with
   the package's approval key and audit-first settings, retaining a backup.
   Custom policies, revocations and existing approval keys remain protected.
