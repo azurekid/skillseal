@@ -53,12 +53,13 @@ If it fails, open the failed step to read its error. Check repository permission
 and branch rules, or ask the repository owner if that is someone else.
 Do not remove protections just to make it pass.
 
-Review skill and workflow changes before they reach the signing branch.
-The included scan helps spot common problems; it does not replace review.
-Scan output appears in the approval step. Failed scans remove existing approval
-signatures and commit those removals while leaving the workflow failed.
-For optional remote scanning and upgrading older workflows, see
-[AgentLens scanning](ADMINISTRATION.md#optional-agentlens-scanning).
+Review changes before they reach the signing branch; scanning does not replace
+review. The approval step shows scan results. A failed scan removes the skill's
+signature and commits the removal, but the workflow stays failed.
+
+Want remote scanning? See [AgentLens](ADMINISTRATION.md#optional-agentlens-scanning).
+Already have a workflow? Follow the
+[upgrade steps](ADMINISTRATION.md#update-an-existing-workflow).
 
 ## 4. Connect your machine
 
