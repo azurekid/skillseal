@@ -1,0 +1,76 @@
+name: Approve skills (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      skills:
+        description: Space or newline separated skill folders or glob patterns.
+        required: true
+        type: string
+      scan:
+        description: Scanner command; nonzero exit blocks signing.
+        type: string
+        default: "skillseal scan --fail-on HIGH {path}"
+      only-changed:
+        description: Skip skills whose signature still verifies.
+        type: boolean
+        default: true
+      commit-signatures:
+        description: Commit signatures back to the calling branch.
+        type: boolean
+        default: true
+    outputs:
+      signed:
+        description: Space separated skill folders that were signed.
+        value: ${{ jobs.approve.outputs.signed }}
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: skillseal-approve-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    outputs:
+      signed: ${{ steps.seal.outputs.signed }}
+    steps:
+      - name: Require a branch event, not a pull request
+        env:
+          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if [ "$REF_TYPE" != branch ] || [[ "$EVENT" == pull_request* ]]; then
+            echo "::error::Approval must run on a trusted branch, not a pull request or tag."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - id: seal
+        # Requires caller-workflow verification added after v0.3.0.
+        # Pin this and the caller's workflow reference to reviewed SHAs for production.
+        uses: azurekid/skillseal@main
+        with:
+          skills: ${{ inputs.skills }}
+          scan: ${{ inputs.scan }}
+          only-changed: ${{ inputs.only-changed }}
+
+      - name: Commit signatures
+        if: inputs.commit-signatures && steps.seal.outputs.signed != ''
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          git config user.name "skillseal[bot]"
+          git config user.email "skillseal@users.noreply.github.com"
+          git add -- ':(glob)**/skill.oms.sig'
+          if git diff --cached --quiet; then
+            echo "No signature changes to commit."
+            exit 0
+          fi
+          git commit -m "Sign approved skills"
+          git push origin "HEAD:refs/heads/$BRANCH"

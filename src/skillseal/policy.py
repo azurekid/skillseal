@@ -37,6 +37,7 @@ class Signer:
     issuer: str = ""
     certificate_chain: tuple[str, ...] = ()
     public_key: str = ""
+    github_workflow: str = ""
 
     @classmethod
     def parse(cls, raw: dict, base: Path) -> "Signer":
@@ -50,7 +51,13 @@ class Signer:
             identity, issuer = raw.get("identity"), raw.get("issuer")
             if not identity or not issuer:
                 raise PolicyError(f"sigstore signer {name!r} needs 'identity' and 'issuer'")
-            return cls(name, kind, identity=str(identity), issuer=str(issuer))
+            caller = raw.get("github_workflow", "")
+            if not isinstance(caller, str) or (caller and (
+                issuer != GITHUB_ISSUER or not caller.startswith("https://github.com/")
+                or "/.github/workflows/" not in caller or "@" not in caller
+            )):
+                raise PolicyError(f"sigstore signer {name!r}: github_workflow needs an exact GitHub workflow URL and GitHub issuer")
+            return cls(name, kind, identity=str(identity), issuer=str(issuer), github_workflow=caller)
         if kind == "certificate":
             chain = raw.get("certificate_chain")
             if isinstance(chain, str):

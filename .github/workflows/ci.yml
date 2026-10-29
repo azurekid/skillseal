@@ -10,6 +10,16 @@ permissions:
   contents: read
 
 jobs:
+  reusable-signing-e2e:
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/approve-skills.yml
+    with:
+      skills: "examples/skills/*"
+      commit-signatures: false
+
   test:
     strategy:
       matrix:

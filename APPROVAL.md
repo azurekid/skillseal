@@ -17,43 +17,100 @@ skills/
     SKILL.md
 ```
 
+Skills can also live in repository agent directories. The caller below includes
+all default project skill locations supported by Skillseal; no move to `skills/`
+is required:
+
+| Agent | Project skill locations |
+| --- | --- |
+| Claude Code | `.claude/skills/` |
+| GitHub Copilot | `.github/skills/`, `.claude/skills/`, `.agents/skills/` |
+| Codex | `.agents/skills/` |
+| Gemini CLI | `.gemini/skills/`, `.agents/skills/` |
+| OpenCode | `.opencode/skills/`, `.claude/skills/`, `.agents/skills/` |
+| OpenClaw (experimental) | `skills/`, `.agents/skills/` |
+
 ### 2. Add the approval workflow
 
-Copy [`examples/approve-skills.yml`](examples/approve-skills.yml) to `.github/workflows/approve-skills.yml`. Do not rename the file later: its name and branch are part of the signing identity. The important part:
+Copy the small caller in [`examples/approve-skills.yml`](examples/approve-skills.yml)
+to `.github/workflows/approve-skills.yml` **in your skills repository**.
+It calls Skillseal's [reusable workflow](.github/workflows/approve-skills.yml),
+which handles checkout, scanning, signing, verification, and committing signatures.
+The root [`action.yml`](action.yml) is the lower-level composite action, not the
+workflow file you create in your repository.
 
 ```yaml
+name: Approve skills
 on:
   push:
     branches: [main]
-    paths: ["skills/**"]
+    paths:
+      - "skills/**"
+      - ".claude/skills/**"
+      - ".agents/skills/**"
+      - ".github/skills/**"
+      - ".gemini/skills/**"
+      - ".opencode/skills/**"
+  workflow_dispatch:
 permissions:
   contents: write     # commit skill.oms.sig
   id-token: write     # Sigstore keyless signing
 jobs:
-  sign:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - id: seal
-        uses: azurekid/skillseal@main
-        with:
-          skills: "skills/*"
-          scan: skillseal scan --fail-on HIGH {path}
-      - if: steps.seal.outputs.signed != ''
-        run: |
-          git config user.name "skillseal[bot]"
-          git config user.email "skillseal@users.noreply.github.com"
-          git add skills/*/skill.oms.sig
-          git commit -m "Sign approved skills: ${{ steps.seal.outputs.signed }}"
-          git push
+  approve:
+    uses: azurekid/skillseal/.github/workflows/approve-skills.yml@main
+    with:
+      skills: |
+        skills/*
+        .claude/skills/*
+        .agents/skills/*
+        .github/skills/*
+        .gemini/skills/*
+        .opencode/skills/*
 ```
 
-The example uses Skillseal's built-in heuristic scanner from `main`. Pin the action to a reviewed commit SHA in production; the older `v0.2.0` action does not include that command.
+Keep the push `paths` filters and `skills` patterns in sync when adding custom
+repository locations.
+These patterns select immediate skill folders containing `SKILL.md`; add
+appropriate patterns if your skills are nested more deeply.
+
+Approval selection and runtime discovery are separate: signing a folder does
+not make an agent discover it. The [runtime locations table](REFERENCE.md#where-each-agent-loads-skills)
+lists defaults for each agent. In particular, `~/.copilot/skills/` is a
+user-directory location, not the repository's `.copilot/skills/`. The latter
+requires explicit `skill_roots` configuration if you want Skillseal to check
+it. GitHub CI only signs checked-out repository files, not developers' home
+directories; distribute signed skills to those locations afterward.
+
+This development example requires the post-0.3.0 changes on `main`; `v0.3.0`
+does not contain the reusable workflow or caller-bound verification.
+Upgrade developer installations to a version containing these changes too.
+For production, pin both the caller's reusable-workflow reference and the action
+reference inside that shared workflow to reviewed commits. Pinning the outer
+workflow does not pin an inner `uses: ...@main`.
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `skills` | Required | Space/newline separated folders or glob patterns |
+| `scan` | `skillseal scan --fail-on HIGH {path}` | Nonzero exit blocks signing |
+| `only-changed` | `true` | Skip signatures still valid for this signer and caller |
+| `commit-signatures` | `true` | Commit signatures to the caller's branch |
+
+The `signed` workflow output lists signed skill folders. Empty `scan` is rejected;
+to deliberately sign without scanning, use the lower-level action and its explicit
+`allow-no-scan` option. Custom scanners must already be available on the runner;
+use the lower-level action if you need additional setup steps.
+
+Run approval only on reviewed, trusted branches, not pull requests. The shared
+workflow rejects pull-request events and tags. Repository rules must permit its
+token to push signature commits; otherwise pushing fails explicitly. Do not
+weaken branch protection just to bypass this: use a reviewed custom PR-based
+publishing workflow where required.
 
 On every push to `main` the workflow:
 
 1. runs Skillseal's heuristic checks on each skill folder (`{path}` is replaced by the folder; exit code 0 means no findings at or above the selected severity),
-2. signs every clean skill with Sigstore, without any key to manage: the identity of the signature **is this workflow**,
+2. signs every clean skill with Sigstore and verifies both the shared signing
+   identity and the caller's signed workflow claim,
 3. the last step commits `skill.oms.sig` next to each `SKILL.md`.
 
 The built-in scan is a small heuristic check for obvious prompt-injection phrases and risky shell/network commands. It can miss harmful content and can flag benign examples; it is not a safety guarantee. You can also supply another scanner. If scanning fails, the skill is not signed. Want to sign without a scanner? You must say so with `allow-no-scan: true`.
@@ -63,14 +120,30 @@ A signature proves **who approved** a skill and that it **did not change**. It d
 ### 3. Give your developers the trust command
 
 ```bash
-skillseal init --github-workflow YOUR-ORG/agent-skills/.github/workflows/approve-skills.yml@refs/heads/main
+skillseal init \
+  --github-workflow YOUR-ORG/agent-skills/.github/workflows/approve-skills.yml@refs/heads/main \
+  --reusable-workflow azurekid/skillseal/.github/workflows/approve-skills.yml@refs/heads/main
 ```
+
+For a caller using `@COMMIT_SHA`, the `--reusable-workflow` suffix must be that
+exact `@COMMIT_SHA`, not `@refs/heads/main`. For `@vX.Y.Z`, use
+`@refs/tags/vX.Y.Z`. The action prints the signing identity and caller workflow
+for troubleshooting.
+
+Fulcio uses the reusable workflow as the certificate identity. The additional
+`github_workflow` policy field checks its authenticated Build Config URI
+extension against **your caller**. Never configure the shared workflow identity
+alone: that would authorize other repositories invoking it. Renaming the caller,
+changing its branch, or changing the shared workflow ref requires a policy update.
+
+If you use the composite action directly in your own workflow instead, omit
+`--reusable-workflow`; the ordinary `--github-workflow` command remains valid.
 
 Or share the resulting `~/.config/skillseal/policy.json` file. It is small and contains no secrets, so you can put it in dotfiles, a devcontainer, an onboarding script or a base image. Developers copy it to their own user policy location using the [copy instructions](GETTING-STARTED.md#use-a-policy-your-team-gave-you). Include any public key or certificate files it references. Do not distribute your own machine's absolute paths to those files.
 
 #### Trusting more than one signing workflow
 
-Trust follows the **signing workflow**, not the repository where a developer uses a skill. One central approval workflow can sign skills for many projects. Developers need only one trust entry for that identity.
+Trust follows the **signing workflow**, not the repository where a developer uses a skill. One central approval workflow can sign skills for many projects. With the reusable setup, trust entries also restrict the caller as described above.
 
 If different repositories run their own approval workflows, add each trusted identity to the **same user policy**. For example:
 

@@ -1,6 +1,15 @@
 # Changelog
 
-## 0.3.0 (unreleased)
+## 0.3.1 (unreleased)
+
+- Add a reusable approval workflow and a small caller example for skills repos.
+- Bind shared-workflow trust to the caller's signed Fulcio Build Config URI;
+  require upgraded verifiers and do not trust a shared identity on its own.
+- Verify newly produced signatures and use the actual shared signing identity
+  for unchanged-skill checks.
+- Add real reusable-signing CI coverage and local caller-binding tests.
+
+## 0.3.0
 
 - Add portable `skillseal digest` content identifiers and authoritative-policy
   `revoked_skills` denials. Copying or re-signing identical content does not

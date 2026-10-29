@@ -84,6 +84,15 @@ Example ([`examples/policies/user-policy.json`](examples/policies/user-policy.js
 | `allow_repo_signers` | Let a repository's `.skillseal/policy.json` add signers. Default `false`. |
 | `revoked_skills` | Object mapping lowercase `skillseal digest` SHA256 content identifiers to nonempty incident reasons. Default `{}`. Only the authoritative policy supplies these denials; repository layers cannot add or clear them. |
 
+Sigstore entries can also set `github_workflow` to an exact caller workflow URL.
+For shared workflows, `identity` is the reusable workflow URI and
+`github_workflow` is your caller URI. Verification checks the caller's signed
+Fulcio Build Config URI extension after cryptographic verification. Missing or
+mismatched extensions fail. `init --github-workflow CALLER --reusable-workflow SHARED`
+creates this pair. Do not trust a cross-repository shared identity without a
+caller restriction. Older Skillseal versions do not enforce this field; upgrade
+verifiers before adopting shared-workflow signing.
+
 Where policies are read from:
 
 1. System: `/etc/skillseal/policy.json` (Windows: `%ProgramData%\skillseal\policy.json`). If it exists, it wins.
@@ -166,7 +175,7 @@ skillseal reuses OMS and adds the missing parts: a trust policy, stricter verifi
 
 ```text
 skillseal init       [--scope user|repo] [--mode enforce|warn|audit] [--github-workflow REF] [--identity ID --issuer URL]
-                     [--public-key PEM] [--certificate-chain PEM ...] [--force]
+                     [--reusable-workflow REF] [--public-key PEM] [--certificate-chain PEM ...] [--force]
 skillseal check      [--agent NAME ...] [--cwd DIR] [--policy FILE] [--json] [--no-cache]
 skillseal install    AGENT... [--scope project|user] [--project DIR] [--exe PATH]
 skillseal uninstall  AGENT... [--scope project|user] [--project DIR]

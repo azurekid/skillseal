@@ -134,6 +134,13 @@ def _crypto_verify(skill: Path, sig: Path, signer: Signer, ser: dict) -> None:
     cfg.set_hashing_config(_verify_hashing_config(ser))
     cfg.set_ignore_unsigned_files(False)
     cfg.verify(skill, sig)
+    if signer.type == "sigstore" and signer.github_workflow:
+        from sigstore.models import Bundle
+        from sigstore.verify.policy import OIDCBuildConfigURI
+
+        # Only inspect the caller extension after authenticating the bundle.
+        bundle = Bundle.from_json(sig.read_bytes())
+        OIDCBuildConfigURI(signer.github_workflow).verify(bundle.signing_certificate)
 
 
 def _short_error(exc: Exception) -> str:

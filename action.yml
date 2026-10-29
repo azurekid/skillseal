@@ -69,9 +69,28 @@ runs:
           exit 1
         fi
         # Verify against our own identity so unchanged skills are skipped.
-        identity="https://github.com/${GITHUB_WORKFLOW_REF}"
         policy="$RUNNER_TEMP/skillseal-self.json"
-        printf '{"trusted_signers":[{"name":"self","type":"sigstore","identity":"%s","issuer":"https://token.actions.githubusercontent.com"}]}' "$identity" > "$policy"
+        python - "$policy" <<'PY'
+        import base64
+        import json
+        import os
+        import sys
+        from sigstore.oidc import detect_credential
+        token = detect_credential()
+        if not token:
+            raise RuntimeError("GitHub OIDC token unavailable")
+        # This is a policy hint, not authentication; verification checks Fulcio's certificate.
+        payload = token.split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+        identity = "https://github.com/" + claims["job_workflow_ref"]
+        caller = "https://github.com/" + os.environ["GITHUB_WORKFLOW_REF"]
+        signer = {"name": "self", "type": "sigstore", "identity": identity,
+                  "issuer": "https://token.actions.githubusercontent.com", "github_workflow": caller}
+        with open(sys.argv[1], "w", encoding="utf-8") as file:
+            json.dump({"trusted_signers": [signer]}, file)
+        print(f"Signing identity: {identity}")
+        print(f"Caller workflow: {caller}")
+        PY
         signed=()
         failed=0
         for pattern in $SKILLS; do
@@ -82,6 +101,7 @@ runs:
               continue
             fi
             if skillseal sign "${scan_args[@]}" "$dir"; then
+              skillseal verify --no-cache --policy "$policy" "$dir"
               signed+=("$dir")
             else
               failed=1
@@ -89,5 +109,5 @@ runs:
           done
         done
         echo "signed=${signed[*]}" >> "$GITHUB_OUTPUT"
-        echo "Signed ${#signed[@]} skill(s) as $identity"
+        echo "Signed ${#signed[@]} skill(s)"
         exit $failed

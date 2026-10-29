@@ -122,6 +122,28 @@ OWNER/REPOSITORY/.github/workflows/WORKFLOW-FILE.yml@refs/heads/BRANCH
 | `WORKFLOW-FILE.yml` | Exact approval workflow filename | `approve-skills.yml` |
 | `BRANCH` | Branch where that workflow signs skills | `main` |
 
+`WORKFLOW-FILE.yml` is a file in **your signing repository**, usually
+`.github/workflows/approve-skills.yml`. It is not Skillseal's root `action.yml`.
+Create it using the [small reusable-workflow caller](examples/approve-skills.yml)
+and the [approval setup guide](APPROVAL.md#2-add-the-approval-workflow).
+
+**If your workflow calls Skillseal's reusable workflow**, configure both its
+identity and your caller:
+
+```bash
+skillseal init --mode audit \
+  --github-workflow YOUR-ORG/agent-skills/.github/workflows/approve-skills.yml@refs/heads/main \
+  --reusable-workflow azurekid/skillseal/.github/workflows/approve-skills.yml@refs/heads/main
+```
+
+Use the shared workflow's exact ref: for a pinned commit use `@COMMIT_SHA`;
+for a release tag use `@refs/tags/TAG`. This requires Skillseal newer than
+0.3.0. The caller restriction prevents trusting every other repository that
+uses the same shared workflow.
+
+**For a workflow that invokes the composite action directly**, use the commands
+below without `--reusable-workflow`.
+
 `YOUR-ORG/agent-skills` below is a placeholder for `OWNER/REPOSITORY`, not a required repository name. Replace it with the repository that **signs** your skills, and use the workflow filename and branch your team gives you:
 
 ```bash

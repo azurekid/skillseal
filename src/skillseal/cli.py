@@ -98,6 +98,11 @@ def cmd_init(a) -> int:
             "identity": f"https://github.com/{a.github_workflow}",
             "issuer": GITHUB_ISSUER,
         })
+        if a.reusable_workflow:
+            signers[-1]["github_workflow"] = signers[-1]["identity"]
+            signers[-1]["identity"] = f"https://github.com/{a.reusable_workflow}"
+    elif a.reusable_workflow:
+        raise PolicyError("--reusable-workflow requires --github-workflow to restrict the caller")
     if a.identity:
         signers.append({"name": "sigstore identity", "type": "sigstore", "identity": a.identity, "issuer": a.issuer})
     if a.public_key:
@@ -254,6 +259,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--mode", choices=MODES, default="enforce")
     s.add_argument("--github-workflow", metavar="OWNER/REPO/.github/workflows/FILE.yml@REF",
                    help="trust Sigstore signatures made by this GitHub Actions workflow")
+    s.add_argument("--reusable-workflow", metavar="OWNER/REPO/.github/workflows/FILE.yml@REF",
+                   help="reusable signing workflow identity; --github-workflow restricts its caller")
     s.add_argument("--identity", help="trust this Sigstore certificate identity (needs --issuer)")
     s.add_argument("--issuer", default=GITHUB_ISSUER)
     s.add_argument("--public-key", help="trust an EC public key (PEM)")

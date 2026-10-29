@@ -66,6 +66,12 @@ Run the [offline trust and revocation lab](examples/TRUST-LAB.md), or follow the
 distribution is your responsibility: offline devices cannot learn about a new
 revocation until their local policy is updated.
 
+For GitHub approval, use the [small caller workflow](examples/approve-skills.yml)
+in your skills repository. It delegates to Skillseal's
+[reusable approval workflow](.github/workflows/approve-skills.yml). Follow the
+[setup and caller-bound trust instructions](APPROVAL.md#2-add-the-approval-workflow);
+shared-workflow verification requires a version newer than 0.3.0.
+
 ## Read the guide you need
 
 | Guide | What it covers |

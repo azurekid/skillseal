@@ -1,42 +1,36 @@
-# Approve skills: scan every skill folder and sign the clean ones with Sigstore.
+# Approve skills in the configured repository locations with Sigstore.
 # Copy to .github/workflows/approve-skills.yml in the repository that holds your skills.
 #
 # Trust it on developer machines with:
-#   skillseal init --github-workflow OWNER/REPO/.github/workflows/approve-skills.yml@refs/heads/main
+#   skillseal init --github-workflow OWNER/REPO/.github/workflows/approve-skills.yml@refs/heads/main \
+#     --reusable-workflow azurekid/skillseal/.github/workflows/approve-skills.yml@refs/heads/main
 name: approve-skills
 
 on:
   push:
     branches: [main]
-    paths: ["skills/**"]
+    paths:
+      - "skills/**"
+      - ".claude/skills/**"
+      - ".agents/skills/**"
+      - ".github/skills/**"
+      - ".gemini/skills/**"
+      - ".opencode/skills/**"
   workflow_dispatch:
 
 permissions:
   contents: write   # commit the skill.oms.sig files back
   id-token: write   # Sigstore keyless signing
 
-concurrency:
-  group: approve-skills
-  cancel-in-progress: false
-
 jobs:
-  sign:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - id: seal
-        # Development example; pin a reviewed commit SHA in production.
-        uses: azurekid/skillseal@main
-        with:
-          skills: "skills/*"
-          scan: skillseal scan --fail-on HIGH {path}
-
-      - name: Commit signatures
-        if: steps.seal.outputs.signed != ''
-        run: |
-          git config user.name "skillseal[bot]"
-          git config user.email "skillseal@users.noreply.github.com"
-          git add skills/*/skill.oms.sig
-          git commit -m "Sign approved skills: ${{ steps.seal.outputs.signed }}"
-          git push
+  approve:
+    # Development example; pin a reviewed commit SHA in production.
+    uses: azurekid/skillseal/.github/workflows/approve-skills.yml@main
+    with:
+      skills: |
+        skills/*
+        .claude/skills/*
+        .agents/skills/*
+        .github/skills/*
+        .gemini/skills/*
+        .opencode/skills/*

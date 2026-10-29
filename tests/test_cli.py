@@ -88,6 +88,17 @@ def test_digest_command(tmp_path, capsys):
     assert "[ERROR]" in capsys.readouterr().err
 
 
+def test_init_reusable_workflow_binds_caller(isolated_env):
+    caller = "team/skills/.github/workflows/approve-skills.yml@refs/heads/main"
+    reusable = "azurekid/skillseal/.github/workflows/approve-skills.yml@abc123"
+    assert main(["init", "--github-workflow", caller, "--reusable-workflow", reusable]) == 0
+    policy = json.loads((isolated_env / ".config/skillseal/policy.json").read_text())
+    signer = policy["trusted_signers"][0]
+    assert signer["identity"] == f"https://github.com/{reusable}"
+    assert signer["github_workflow"] == f"https://github.com/{caller}"
+    assert main(["init", "--reusable-workflow", reusable, "--force"]) == 2
+
+
 @no_system_policy
 def test_hook_subprocess_blocks(tmp_path, keys, isolated_env):
     proj = tmp_path / "proj"
