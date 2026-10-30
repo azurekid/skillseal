@@ -1,7 +1,7 @@
 name: release
 
-# Builds standalone skillseal binaries (no Python needed), tests them, and publishes them
-# with SHA256 checksums and GitHub build provenance. Run manually to test a build without releasing.
+# Builds Python packages and optional standalone binaries, tests them, and publishes
+# them with SHA256 checksums and GitHub build provenance. Manual runs do not release.
 on:
   push:
     tags: ["v*"]
@@ -11,6 +11,58 @@ permissions:
   contents: read
 
 jobs:
+  python-package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and validate Python distributions
+        run: |
+          python -m pip install build twine pipx uv
+          python -m build
+          python -m twine check dist/*
+      - name: Test wheel and source distribution outside the checkout
+        run: |
+          set -euo pipefail
+          for package in "$PWD"/dist/*; do
+            envdir="$(mktemp -d "$RUNNER_TEMP/package-test.XXXXXXXX")"
+            python -m venv "$envdir"
+            "$envdir/bin/python" -m pip install "$package"
+            (
+              cd "$envdir"
+              "$envdir/bin/skillseal" --version
+              if [ "$GITHUB_REF_TYPE" = tag ]; then
+                test "$("$envdir/bin/skillseal" --version)" = "skillseal ${GITHUB_REF_NAME#v}"
+              fi
+              "$envdir/bin/skillseal" demo
+            )
+          done
+      - name: Test pipx and uv installation
+        run: |
+          set -euo pipefail
+          export PIPX_HOME="$RUNNER_TEMP/pipx" PIPX_BIN_DIR="$RUNNER_TEMP/pipx-bin"
+          export UV_TOOL_DIR="$RUNNER_TEMP/uv-tools" UV_TOOL_BIN_DIR="$RUNNER_TEMP/uv-bin"
+          python -m pipx install --python "$(command -v python)" "$PWD"/dist/*.whl
+          uv tool install --python "$(command -v python)" --from "$PWD"/dist/*.whl skillseal
+          cd "$RUNNER_TEMP"
+          "$PIPX_BIN_DIR/skillseal" demo
+          "$UV_TOOL_BIN_DIR/skillseal" demo
+      - uses: actions/attest-build-provenance@v2
+        if: github.ref_type == 'tag'
+        with:
+          subject-path: dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: dist/*
+          if-no-files-found: error
+
   starter:
     runs-on: ubuntu-latest
     permissions:
@@ -131,23 +183,34 @@ jobs:
 
   publish:
     if: github.ref_type == 'tag'
-    needs: [build, starter]
+    needs: [python-package, build, starter]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: assets
           merge-multiple: true
+      - name: Generate release checksums
+        run: |
+          set -euo pipefail
+          cd assets
+          sha256sum skillseal-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Attest checksum manifest
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: assets/SHA256SUMS.txt
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           cd assets
-          sha256sum skillseal-* > SHA256SUMS.txt
-          cat SHA256SUMS.txt
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes \
             skillseal-* SHA256SUMS.txt
 

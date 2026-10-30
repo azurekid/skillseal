@@ -10,27 +10,65 @@ These steps require Skillseal **v0.4.0 or newer**.
 
 ## Install Skillseal
 
-### Windows
+### Recommended: isolated Python package
 
-Open **PowerShell** and run:
+Use Python **3.10+** with [pipx](https://pipx.pypa.io/stable/installation/)
+or [uv](https://docs.astral.sh/uv/getting-started/installation/). Both keep
+Skillseal and its dependencies isolated from other Python applications.
+This works on Windows, macOS and Linux without downloading the standalone
+PyInstaller executable.
+
+Python wheels and source archives are included in releases built with the Python
+package release workflow. Choose one on the
+[release page](https://github.com/azurekid/skillseal/releases), replace `VERSION`
+below with its version number (without `v`), then run:
+
+```text
+pipx install "https://github.com/azurekid/skillseal/releases/download/vVERSION/skillseal-VERSION-py3-none-any.whl"
+pipx ensurepath
+```
+
+Or with uv:
+
+```text
+uv tool install --from "https://github.com/azurekid/skillseal/releases/download/vVERSION/skillseal-VERSION-py3-none-any.whl" skillseal
+uv tool update-shell
+```
+
+For provenance verification **before installation**, download the wheel and
+follow the [verification steps](REFERENCE.md#verify-a-python-release), then
+install that local file instead:
+
+```text
+pipx install ./skillseal-VERSION-py3-none-any.whl
+```
+
+There is no PyPI publishing configured; use the release wheel, not
+`pipx install skillseal`. Package installation still installs dependencies and a
+command launcher (typically a small `.exe` on Windows). It does not bypass
+application-control policy. Follow your organization's software approval rules.
+
+### Optional: standalone installation without Python
+
+If Python is unavailable, the existing standalone installers remain available.
+These binaries are not Authenticode or Apple Developer ID signed and may be
+blocked on managed devices. See [release verification and installation
+alternatives](REFERENCE.md#installation-alternatives).
+
+Windows PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/azurekid/skillseal/main/install.ps1 | iex
 ```
 
-### macOS or Linux
-
-Open **Terminal** and run:
+macOS (Apple silicon) or Linux (x64, glibc 2.35+):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/azurekid/skillseal/main/install.sh | sh
 ```
 
-No administrator rights or Python needed. The Mac download is for Apple silicon;
-the Linux download is for x64 systems such as Ubuntu 22.04 or newer.
-For other machines with Python 3.10+, use [pipx](https://pipx.pypa.io):
-`pipx install git+https://github.com/azurekid/skillseal`.
-On a managed work device, follow your organization's installation rules.
+These installers check download checksums, not GitHub attestations. To verify
+provenance before execution, use the manual steps in the reference instead.
 
 **Open a new terminal**, then run:
 
@@ -177,12 +215,29 @@ allow a command through.
 
 ## Everyday use
 
-Use your agent normally. Run `skillseal check` when you need to investigate a
-blocked skill. Restore an approved copy or review and sign the updated version.
-If someone else manages the skills, send them the reported reason.
+With hooks installed, use your agent normally. Run `skillseal check` when you
+need to investigate a blocked skill. Restore an approved copy or review and sign
+the updated version. If someone else manages the skills, send them the reported
+reason.
 
-To update Skillseal, close your agents and rerun the same installer you used
-above. Your settings stay.
+For verification before the agent starts and loads skills, launch it with
+Skillseal, for example:
+
+```text
+skillseal run --agent copilot -- copilot
+```
+
+Replace `copilot` with the agent you use and its command. This refuses to start
+the agent if any discovered skill fails verification, even in `warn` or `audit`
+mode. Launching the agent directly bypasses this startup gate; configured hooks
+then provide defense in depth. This is not a sandbox and assumes skill files
+aren't changed between verification and agent access.
+
+To update a Python-package installation, close your agents, choose the new
+release version, and repeat the `pipx install` or `uv tool install` command above
+with `--force` and the new wheel URL. This replaces the isolated installation;
+your Skillseal settings stay. For a standalone installation, rerun its original
+installer.
 
 ## Need help?
 

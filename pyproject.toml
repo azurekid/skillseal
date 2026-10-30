@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "skillseal"
-version = "0.4.3"
-description = "Only run AI agent skills that were approved and signed. Verifies OpenSSF Model Signing (OMS) signatures on skill folders before Claude Code, Copilot, Codex, Gemini CLI, OpenCode or OpenClaw can load them."
+version = "0.4.4"
+description = "Only run AI agent skills that were approved and signed. Checks OpenSSF Model Signing (OMS) signatures in agent hooks and before agent launches routed through Skillseal."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"

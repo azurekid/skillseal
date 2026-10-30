@@ -50,6 +50,25 @@ See [policy locations and precedence](#the-trust-policy).
 
 Blocking hooks are written as `skillseal hook ... || exit 2` for `sh` and `cmd.exe`, and as `& 'skillseal' hook ...; if (-not $?) { exit 2 }` for PowerShell. Claude Code hooks also set `"onFailure": "block"`, and on Windows they use exec form. The OpenCode plugin throws on any error. The generated commands request blocking on a crash or missing binary; host timeout behavior still applies, as described under [limits](#honest-limits). For Copilot and Claude a `SessionStart` hook also tells the agent why tools are blocked.
 
+### Verify before agent startup
+
+Hooks run inside an agent lifecycle and may run after it has loaded skill
+instructions. To verify first, launch the agent through Skillseal:
+
+```text
+skillseal run --agent copilot -- copilot
+```
+
+The command discovers skills for the selected agent and fully verifies each
+signature and file hash without using the verification cache. It refuses to
+start the child command on any failure, including when policy mode is `warn` or
+`audit`. The command is passed directly to the operating system; no shell is
+used. Replace `copilot` with the agent name and its executable.
+
+This gate only covers launches made through `skillseal run`. It does not sandbox
+the agent or prevent skill files from changing between verification and agent
+access; hooks remain useful as defense in depth.
+
 #### Cross-platform test coverage
 
 [CI](.github/workflows/ci.yml) runs the Python test suite, installed demo and
@@ -113,8 +132,51 @@ apply the printed `plugins.load.paths` snippet. This integration is not tested.
 
 ### Installation alternatives
 
-The [normal installers](GETTING-STARTED.md#install-skillseal) download release
-archives, check SHA256 checksums and install for the current user.
+The [recommended installation](GETTING-STARTED.md#install-skillseal) uses an
+isolated Python environment managed by pipx or uv. Python 3.10+ is required.
+Release wheels include the signed starter examples, and source distributions
+are available for environments that build their own packages. There is no PyPI
+publishing configured.
+
+#### Verify a Python release
+
+Use the [GitHub CLI](https://cli.github.com/) to download a specific release's
+wheel and checksum manifest. Replace `VERSION` with its version number.
+Python packages and the attested checksum manifest are available in releases
+created after the Python package release workflow was added.
+
+```text
+gh release download vVERSION --repo azurekid/skillseal --pattern "skillseal-VERSION-py3-none-any.whl" --pattern SHA256SUMS.txt
+gh attestation verify skillseal-VERSION-py3-none-any.whl --repo azurekid/skillseal --signer-workflow azurekid/skillseal/.github/workflows/release.yml --source-ref refs/tags/vVERSION
+gh attestation verify SHA256SUMS.txt --repo azurekid/skillseal --signer-workflow azurekid/skillseal/.github/workflows/release.yml --source-ref refs/tags/vVERSION
+```
+
+Stop if verification fails. Check the wheel's SHA256 against its entry in the
+verified manifest, using `sha256sum` on Linux, `shasum -a 256` on macOS, or
+`Get-FileHash -Algorithm SHA256` in PowerShell. Then install the local wheel:
+
+```text
+pipx install ./skillseal-VERSION-py3-none-any.whl
+```
+
+Attestations establish that the artifact was built by the repository's release
+workflow; they are not an independent code review or an OS publisher signature.
+pipx and uv do not automatically verify these GitHub attestations. Dependencies
+are resolved separately and are not covered by the Skillseal artifact attestation.
+Source archives can be verified the same way, but installing them executes the
+build backend; prefer the wheel when no source build is needed.
+
+When switching from a standalone install, remove its old command from PATH
+according to your organization's rules. Confirm `command -v skillseal` (Unix)
+or `Get-Command skillseal` (PowerShell) resolves to the new installation. Rerun
+`skillseal install AGENT --scope user` and/or `--scope project` for each scope
+where you installed hooks, because existing hooks may point at the old binary.
+
+#### Standalone archives
+
+The optional shell and PowerShell installers download standalone release
+archives, check SHA256 checksums and install for the current user. They do not
+verify GitHub attestations automatically.
 Standalone builds support Windows x64, macOS Apple silicon and Linux x64 with
 glibc 2.35+; use a Python 3.10+ installation on other systems.
 Close running agents before updating. If `skillseal` is not on PATH, open a
@@ -136,7 +198,13 @@ sha256sum skillseal-linux-x64.tar.gz
 (Get-FileHash .\skillseal-windows-x64.zip -Algorithm SHA256).Hash
 ```
 
-For GitHub build provenance, use `gh attestation verify ARCHIVE --repo azurekid/skillseal`.
+For GitHub build provenance, before unpacking or executing an archive, use:
+
+```text
+gh attestation verify ARCHIVE --repo azurekid/skillseal --signer-workflow azurekid/skillseal/.github/workflows/release.yml
+```
+
+For new releases, also verify `SHA256SUMS.txt` with the same command.
 For Windows offline installation, run a reviewed copy of
 `install.ps1 -ZipPath .\skillseal-windows-x64.zip`.
 Installers and standalone programs are not Authenticode or Apple Developer ID
@@ -307,6 +375,7 @@ skillseal scan       DIR... [--fail-on LOW|MEDIUM|HIGH]
 skillseal verify     DIR... [--policy FILE] [--json] [--no-cache]
 skillseal digest     DIR...             # content identifiers for revoked_skills
 skillseal hook       AGENT [EVENT]      # called by the agent, reads the hook JSON on stdin
+skillseal run        --agent AGENT [--cwd DIR] [--policy FILE] -- COMMAND [ARG...]
 ```
 
 `AGENT` is one of `claude`, `copilot`, `codex`, `gemini`, `opencode`, `openclaw`. `install` and `uninstall` default to `--scope project`; on a developer machine use `--scope user`.
@@ -357,4 +426,12 @@ Build the standalone binary (into `dist/skillseal/`):
 ./packaging/build.sh
 ```
 
-A tag `v*` runs the [release workflow](.github/workflows/release.yml): it builds the binaries on Windows, Linux and macOS, tests each one (key and Sigstore signing, tamper detection, and on Windows `install.ps1` plus a hook in PowerShell 5.1), and publishes them with `SHA256SUMS.txt` and build provenance.
+A tag `v*` runs the [release workflow](.github/workflows/release.yml): it builds
+wheel and source distributions, checks their metadata, and tests both installed
+outside the checkout, including pipx and uv wheel installations. It also builds
+the optional binaries on Windows, Linux and macOS and tests each one (key and
+Sigstore signing, tamper detection, and on Windows `install.ps1` plus a hook in
+PowerShell 5.1). Python packages, standalone
+archives, starter ZIP and `SHA256SUMS.txt` receive GitHub build provenance.
+Manual workflow runs build and test artifacts without publishing or attesting
+them. No PyPI credentials or OS publisher-signing credentials are required.

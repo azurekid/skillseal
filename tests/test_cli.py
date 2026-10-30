@@ -35,6 +35,41 @@ def test_init_sign_check_roundtrip(tmp_path, keys, isolated_env, monkeypatch, ca
     assert json.loads(capsys.readouterr().out)[0]["status"] == "verified"
 
 
+def test_run_blocks_before_starting_agent_when_skill_is_unapproved(tmp_path, keys, isolated_env):
+    proj = tmp_path / "proj"
+    (proj / ".git").mkdir(parents=True)
+    skill = make_skill(proj / ".claude" / "skills")
+    write_policy(isolated_env / ".config" / "skillseal" / "policy.json", keys[1], mode="warn")
+    marker = tmp_path / "agent-started"
+
+    result = run_cli([
+        "run", "--agent", "claude", "--cwd", str(proj), "--",
+        sys.executable, "-c", f"from pathlib import Path; Path({str(marker)!r}).touch()",
+    ])
+
+    assert result.returncode == 1
+    assert "refusing to start command" in result.stderr
+    assert not marker.exists()
+
+
+def test_run_verifies_before_starting_agent_and_preserves_exit_code(tmp_path, keys, isolated_env):
+    proj = tmp_path / "proj"
+    (proj / ".git").mkdir(parents=True)
+    skill = make_skill(proj / ".claude" / "skills")
+    write_policy(isolated_env / ".config" / "skillseal" / "policy.json", keys[1])
+    assert main(["sign", "--no-scan", "--method", "key", "--private-key", str(keys[0]), str(skill)]) == 0
+    marker = tmp_path / "agent-started"
+
+    result = run_cli([
+        "run", "--agent", "claude", "--cwd", str(proj), "--",
+        sys.executable, "-c", f"from pathlib import Path; Path({str(marker)!r}).touch(); raise SystemExit(7)",
+    ])
+
+    assert result.returncode == 7
+    assert marker.is_file()
+    assert "pre-launch verification passed (1 skills)" in result.stderr
+
+
 def test_sign_requires_scan_choice(tmp_path, keys):
     skill = make_skill(tmp_path)
     assert main(["sign", "--method", "key", "--private-key", str(keys[0]), str(skill)]) == 2

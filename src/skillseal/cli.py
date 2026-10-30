@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -243,6 +244,35 @@ def cmd_check(a) -> int:
     return 0 if all(r.ok for r in results) else 1
 
 
+def cmd_run(a) -> int:
+    command = a.command[1:] if a.command[:1] == ["--"] else a.command
+    if not command:
+        print("error: provide the agent command after --", file=sys.stderr)
+        return 2
+    cwd = Path(a.cwd).resolve()
+    try:
+        policy = load_policy(project=cwd, explicit=Path(a.policy) if a.policy else None)
+        skills = discover([a.agent], cwd, policy.skill_roots)
+        results = [verify_skill(skill, policy, use_cache=False) for skill in skills]
+    except (OSError, PolicyError, ValueError) as exc:
+        print(f"skillseal: cannot verify skills; refusing to start command ({exc})", file=sys.stderr)
+        return 2
+
+    failures = [result for result in results if not result.ok]
+    if failures:
+        print("skillseal: refusing to start command; pre-launch verification failed:", file=sys.stderr)
+        for result in failures:
+            _print_result(result)
+        return 1
+
+    print(f"skillseal: pre-launch verification passed ({len(results)} skills)", file=sys.stderr)
+    try:
+        return subprocess.run(command, cwd=cwd, check=False).returncode
+    except OSError as exc:
+        print(f"skillseal: could not start {command[0]!r}: {exc}", file=sys.stderr)
+        return 127
+
+
 def cmd_hook(a) -> int:
     return run_hook(a.agent, a.event or "", sys.stdin.read())
 
@@ -388,6 +418,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--json", action="store_true")
     s.add_argument("--no-cache", action="store_true")
     s.set_defaults(func=cmd_check)
+
+    s = sub.add_parser("run", help="verify skills before starting an agent command")
+    s.add_argument("--agent", required=True, choices=AGENTS, help="agent whose skills will be verified")
+    s.add_argument("--cwd", default=".", help="project/repository directory (default: current folder)")
+    s.add_argument("--policy", help="explicit trust policy file")
+    s.add_argument("command", nargs=argparse.REMAINDER, help="agent command and arguments, after --")
+    s.set_defaults(func=cmd_run)
 
     s = sub.add_parser("hook", help="hook entry point (reads the agent's JSON on stdin)")
     s.add_argument("agent", choices=AGENTS)

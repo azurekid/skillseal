@@ -1,7 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.4.4
 
+- Add `skillseal run` to verify discovered skills before starting an agent
+  command, refusing launch on verification failures regardless of policy mode.
+- Recommend isolated Python installation with pipx or uv. Build and test wheel
+  and source release packages, attest them and the checksum manifest, and keep
+  standalone binaries available as an optional installation path.
 - Show successful scanner output, including scans of unchanged skills.
 - Remove existing approval signatures when scans reject a skill or cannot
   complete, or a selected signed folder loses its `SKILL.md`. Commit signature

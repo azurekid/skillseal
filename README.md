@@ -15,7 +15,9 @@ Works on **Windows, macOS and Linux**. No central server required.
 
 ## See it for yourself
 
-[Install Skillseal](GETTING-STARTED.md#install-skillseal), then run:
+[Install Skillseal](GETTING-STARTED.md#install-skillseal) in an isolated Python
+environment with **pipx or uv**. Release wheels and source packages have GitHub
+build provenance; standalone downloads remain optional. Then run:
 
 ```text
 skillseal demo
@@ -110,6 +112,18 @@ And a withdrawn approval only reaches an offline machine when its policy is upda
 That's why [testing your agent's blocking behavior](GETTING-STARTED.md#check-and-switch-on-blocking)
 is part of setup, not an optional finishing touch.
 Read the [full limits](REFERENCE.md#honest-limits) before relying on enforcement.
+
+To verify skills before an agent process starts, launch it through Skillseal:
+
+```text
+skillseal run --agent copilot -- copilot
+```
+
+Replace `copilot` with the agent and its command. This startup gate refuses to
+launch if any discovered skill fails verification, regardless of policy mode.
+It only applies when you start the agent through `skillseal run`; hooks remain
+useful as defense in depth. This is not a sandbox and doesn't prevent files from
+changing between verification and agent access.
 
 ## Pick your next step
 
