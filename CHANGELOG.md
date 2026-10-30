@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Reject `.git` directories and pointer files inside skills during signing and
+  verification, including nested and case-variant entries. Previously ignored
+  Git metadata could change without invalidating approval. Rejection happens
+  before cache lookup; parent repository metadata remains unaffected.
+
 ## 0.4.6
 
 - Add a guided terminal menu (`skillseal` or `skillseal menu`) for checks,

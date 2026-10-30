@@ -61,7 +61,7 @@ def _hashing_config():
 
     # Hash .github/, .gitignore and .gitattributes too: OMS skips them by default.
     return model_signing.hashing.Config().set_ignored_paths(
-        paths=[SIGNATURE_FILE, ".git"], ignore_git_paths=False
+        paths=[SIGNATURE_FILE], ignore_git_paths=False
     ).set_allow_symlinks(False)
 
 

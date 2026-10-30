@@ -8,7 +8,9 @@ adds the stricter rules an agent skill needs:
 * the signed manifest must use per-file serialization without symlinks;
 * nothing may exist on disk under a path the signature chose to ignore
   (OMS ignores .github/, .gitignore and .gitattributes by default), except
-  the signature file itself and a .git/ directory;
+  the signature file itself;
+* Git metadata directories and pointer files are rejected, including nested
+  and case-variant .git entries;
 * the folder must contain SKILL.md and stay under a size cap so a hook can
   not be stalled.
 """
@@ -28,7 +30,7 @@ from .policy import Policy, Signer
 MAX_FILES = 2000
 MAX_BYTES = 64 * 1024 * 1024
 ALLOWED_HASHES = {"sha256", "blake2", "blake3"}
-ALWAYS_IGNORED = {SIGNATURE_FILE, ".git"}
+ALWAYS_IGNORED = {SIGNATURE_FILE}
 
 VERIFIED = "verified"
 UNSIGNED = "unsigned"
@@ -69,17 +71,20 @@ def _walk(root: Path) -> tuple[list[str], list[str]]:
     total = 0
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         rel_dir = Path(dirpath).relative_to(root)
-        if rel_dir.parts[:1] == (".git",):
-            dirnames[:] = []
-            continue
         for name in list(dirnames):
             p = Path(dirpath) / name
-            if p.is_symlink():
+            if name.casefold() == ".git":
+                problems.append(f"git metadata not allowed: {(rel_dir / name).as_posix()}")
+                dirnames.remove(name)
+            elif p.is_symlink():
                 problems.append(f"symlink not allowed: {(rel_dir / name).as_posix()}")
                 dirnames.remove(name)
         for name in filenames:
             p = Path(dirpath) / name
             rel = (rel_dir / name).as_posix()
+            if name.casefold() == ".git":
+                problems.append(f"git metadata not allowed: {rel}")
+                continue
             if p.is_symlink():
                 problems.append(f"symlink not allowed: {rel}")
                 continue

@@ -13,7 +13,7 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 from conftest import make_key, make_skill, write_policy
 from skillseal import cache
 from skillseal.policy import load_policy
-from skillseal.sign import sign_skill
+from skillseal.sign import SignError, sign_skill
 from skillseal.verify import INVALID, REVOKED, UNSIGNED, VERIFIED, _walk, verify_skill
 
 
@@ -136,6 +136,64 @@ def test_file_hidden_in_github_dir_fails(tmp_path, keys):
     (skill / ".github").mkdir()
     (skill / ".github" / "x.md").write_text("hidden\n")
     assert verify_skill(skill, policy, use_cache=False).status == INVALID
+
+
+@pytest.mark.parametrize("relative", [".git", ".GIT", "scripts/.git"])
+@pytest.mark.parametrize("kind", ["directory", "file"])
+@pytest.mark.parametrize("use_cache", [False, True])
+def test_git_metadata_invalidates_approval(tmp_path, keys, relative, kind, use_cache):
+    skill, policy = signed_skill(tmp_path, keys)
+    assert verify_skill(skill, policy).ok
+    metadata = skill / relative
+    if kind == "directory":
+        (metadata / "hooks").mkdir(parents=True)
+        (metadata / "hooks/pre-commit").write_text("#!/bin/sh\nexit 0\n")
+    else:
+        metadata.write_text("gitdir: /external/repository\n")
+
+    result = verify_skill(skill, policy, use_cache=use_cache)
+    assert result.status == INVALID
+    assert f"git metadata not allowed: {relative}" in result.reasons
+
+
+@pytest.mark.parametrize("kind", ["directory", "file"])
+@pytest.mark.parametrize("relative", [".git", ".GIT", "scripts/.git"])
+def test_signing_rejects_git_metadata(tmp_path, keys, kind, relative):
+    skill = make_skill(tmp_path / "skills")
+    metadata = skill / relative
+    if kind == "directory":
+        metadata.mkdir()
+    else:
+        metadata.write_text("gitdir: /external/repository\n")
+    with pytest.raises(SignError, match="git metadata not allowed"):
+        sign_skill(skill, method="key", private_key=keys[0])
+    assert not (skill / "skill.oms.sig").exists()
+
+
+def test_legacy_git_ignore_signature_requires_metadata_free_skill(tmp_path, keys):
+    import model_signing
+
+    skill = make_skill(tmp_path / "skills")
+    config = model_signing.hashing.Config().set_ignored_paths(
+        paths=["skill.oms.sig", ".git"], ignore_git_paths=False,
+    ).set_allow_symlinks(False)
+    model_signing.signing.Config().set_hashing_config(config).use_elliptic_key_signer(
+        private_key=keys[0],
+    ).sign(skill, skill / "skill.oms.sig")
+    policy = load_policy(explicit=write_policy(tmp_path / "policy.json", keys[1]))
+    assert verify_skill(skill, policy).ok
+    (skill / ".git").mkdir()
+    result = verify_skill(skill, policy)
+    assert result.status == INVALID
+    assert "git metadata not allowed: .git" in result.reasons
+    (skill / ".git").rmdir()
+    assert verify_skill(skill, policy, use_cache=False).ok
+
+
+def test_skill_inside_parent_git_repository_verifies(tmp_path, keys):
+    (tmp_path / ".git").mkdir()
+    skill, policy = signed_skill(tmp_path, keys)
+    assert verify_skill(skill, policy).ok
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="symlinks need extra privileges on Windows")
@@ -298,10 +356,7 @@ def test_digest_excludes_signature_but_covers_files_and_paths(tmp_path, keys):
     assert cache.skill_digest(skill, _walk(skill)[0]) != digest
 
 
-def test_portable_digest_known_vector_and_git_exclusion(tmp_path):
+def test_portable_digest_known_vector(tmp_path):
     (tmp_path / "SKILL.md").write_bytes(b"hello\n")
     expected = "81602bd346b33bd91129760c11c122a8a3d8f6bf42cabbde86f4677392f37bad"
-    assert cache.skill_digest(tmp_path, _walk(tmp_path)[0]) == expected
-    (tmp_path / ".git").mkdir()
-    (tmp_path / ".git/config").write_bytes(b"local metadata\n")
     assert cache.skill_digest(tmp_path, _walk(tmp_path)[0]) == expected

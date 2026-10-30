@@ -98,6 +98,17 @@ def test_tampered_skill_blocks(project, keys):
     assert run_hook("claude", "PreToolUse", stdin(project)) == 2
 
 
+def test_git_metadata_blocks_previously_verified_skill(project, keys, capsys):
+    skill = make_skill(project / ".agents/skills")
+    sign_skill(skill, method="key", private_key=keys[0])
+    assert run_hook("copilot", "preToolUse", stdin(project)) == 0
+    (skill / ".git").mkdir()
+    assert run_hook("copilot", "preToolUse", stdin(project)) == 2
+    decision = json.loads(capsys.readouterr().out)
+    assert decision["permissionDecision"] == "deny"
+    assert "git metadata not allowed" in decision["permissionDecisionReason"]
+
+
 def test_session_start_never_blocks_but_tells_claude(project, capsys):
     make_skill(project / ".claude" / "skills")
     assert run_hook("claude", "SessionStart", stdin(project)) == 0

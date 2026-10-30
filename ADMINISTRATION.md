@@ -398,7 +398,8 @@ authenticated administrative channel.
    sessions if its instructions might already have entered their context.
 
 The digest identifies exact file paths and content, excluding the root
-`skill.oms.sig` and `.git/`. Copying the folder, renaming it or re-signing
+`skill.oms.sig`. Git metadata inside skills is rejected before digest checks.
+Copying the folder, renaming it or re-signing
 unchanged files does not bypass withdrawal. Editing content or paths inside
 the skill creates a new digest: this blocks one release, not every variation.
 

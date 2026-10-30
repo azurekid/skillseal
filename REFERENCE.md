@@ -285,11 +285,20 @@ For each skill folder (a folder with `SKILL.md`):
 
 * `SKILL.md` and `skill.oms.sig` exist and are normal files.
 * No symlinks and no special files anywhere in the folder; at most 2000 files and 64 MiB.
+* No `.git` directories or pointer files anywhere inside the skill, including
+  case variants. Git configuration and hooks must not bypass approval. A parent
+  repository's `.git` outside the skill folder is unaffected.
 * The signature uses OMS per-file hashing with sha256, blake2 or blake3 and `allow_symlinks: false`.
 * No file exists under a path that the signature chose to ignore. OMS ignores `.github/`, `.gitignore` and `.gitattributes` by default; skillseal signs them, and for a third-party signature it rejects any file hidden there.
 * The signature is valid for one of the trusted signers, and the folder contains **exactly** the signed files with the signed hashes. No extra, missing or changed files.
 
 Note: `model-signing` on its own skips `.github/`, `.gitignore` and `.gitattributes` while verifying, even when the signer hashed them. skillseal passes an explicit hashing config so these files are always checked.
+
+Signing also rejects embedded Git metadata. Deploy skill folders without it;
+do not use an entire Git checkout as a loadable skill. Existing signatures for
+metadata-free folders remain compatible, including signatures that list `.git`
+as an ignored path. Adding Git metadata invalidates approval before any cache
+hit can be accepted.
 
 Good results are cached in `~/.cache/skillseal/verified.json`, keyed by the policy, the signature, configured key/certificate file contents, and the hash of every file. Content revocations are checked before cache hits. Removing a signer or changing its trust file invalidates its old approvals. Every check still hashes local skill files; this is not constant-time verification.
 
