@@ -92,11 +92,55 @@ to your agent.
 
 ## Choose your setup
 
+For a guided menu, run this in an interactive terminal:
+
+```text
+skillseal
+```
+
+Or run `skillseal menu`. Choose a number to check skills, set up protection,
+scan and sign locally, enable enforcement, or view help. Each action returns
+to the menu; choose `0` to go back or exit. Ctrl+C exits. Existing commands
+and JSON output remain available for scripts; the menu never prompts when
+stdin or stdout is redirected.
+
 | Your situation | Next step |
 | --- | --- |
+| I want to sign locally without GitHub | [Local signing](#local-signing-without-github) |
 | I use skills in my own projects | [Set up my own skills](#set-up-my-own-skills) |
 | Someone already approves skills for me | [Use an existing setup](#use-an-existing-setup) |
 | I want to approve skills for others too | [Set up signing](APPROVAL.md), then share the package |
+
+## Local signing without GitHub
+
+1. Run `skillseal`, choose **Set up protection**, then **Create a personal local
+   signing key and install hooks**. Select your agent and project folder.
+2. Review and confirm the key location, trust change, and hook installation.
+   The private key stays outside the project. A new policy starts in audit
+   mode; an existing policy keeps its mode, signers and revocations.
+3. Choose **Scan and sign a local skill**. Supply the entire folder containing
+   `SKILL.md`. Select the existing-key option and the private-key path printed
+   during setup (or create a key here if you skipped step 1).
+4. Review the files and confirm signing. The menu runs the local heuristic
+   scanner, blocks HIGH/CRITICAL findings, and verifies the result against your
+   policy. On a rejected or failed scan, the previous approval signature is
+   removed; the menu asks for permission before starting this scan.
+5. Restart your agent, choose **Check my skills and trust policy**, then
+   **Enable enforcement** when ready. Test the agent's blocking behavior below.
+
+No signing key is uploaded. Protect the private-key folder with your account's
+access controls and never commit or share the private key. The scanner is not a
+substitute for reviewing instructions and scripts.
+
+The menu can also use existing keys, CA-issued certificates, or online Sigstore
+authentication. It does not automatically trust an existing signer. Managed
+system policies cannot be changed through personal-key setup. A policy with
+`require_ca_issued` rejects personal raw keys; use an approved certificate or
+Sigstore identity instead.
+
+Signing covers a whole skill folder, not arbitrary individual files. For
+scriptable local signing commands, see
+[Sign without GitHub Actions](ADMINISTRATION.md#sign-without-github-actions).
 
 ## Set up my own skills
 

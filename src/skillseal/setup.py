@@ -240,16 +240,16 @@ def enable_enforcement(agent: str, yes: bool, cwd: Path) -> int:
     target = user_policy_path().expanduser().absolute()
     policy = load_policy(project=cwd)
     if str(target) not in [str(Path(p).absolute()) for p in policy.sources] or not policy.signers:
-        raise SetupError("No user approval policy configured. Run team setup first.")
+        raise SetupError("No user approval policy configured. Use Set up protection in skillseal menu first.")
     # Planning is read-only and reuses the same host-specific hook writers.
     for path, planned in _hook_plan(agent, sys.executable if getattr(sys, "frozen", False) else
                                     (shutil.which("skillseal") or "skillseal")).items():
         if not path.is_file():
-            raise SetupError(f"No {agent} hook configuration found. Run team setup first.")
+            raise SetupError(f"No {agent} hook configuration found. Use Set up protection in skillseal menu first.")
         actual = path.read_bytes()
         changed = json.loads(actual) != json.loads(planned) if path.suffix == ".json" else actual != planned
         if changed:
-            raise SetupError(f"{agent} hooks need updating. Rerun team setup before enabling enforcement.")
+            raise SetupError(f"{agent} hooks need updating. Use Set up protection in skillseal menu before enabling enforcement.")
     results = [verify_skill(skill, policy, use_cache=False)
                for skill in discover([agent], cwd, policy.skill_roots)]
     if not results:

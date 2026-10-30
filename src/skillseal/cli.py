@@ -320,6 +320,12 @@ def cmd_demo(a) -> int:
     return demo()
 
 
+def cmd_menu(a) -> int:
+    from .menu import run_menu
+
+    return run_menu()
+
+
 def cmd_setup(a) -> int:
     from .setup import SETUP_AGENTS, _answer, enable_enforcement, join_team, organization
 
@@ -347,7 +353,11 @@ def cmd_setup(a) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="skillseal", description="Only run agent skills that were approved and signed.")
     p.add_argument("--version", action="version", version=f"skillseal {__version__}")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="cmd")
+    p.set_defaults(func=cmd_menu)
+
+    s = sub.add_parser("menu", help="open the guided interactive menu")
+    s.set_defaults(func=cmd_menu)
 
     s = sub.add_parser("demo", help="try signed starter skills without changing your settings")
     s.set_defaults(func=cmd_demo)
@@ -465,15 +475,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"scan error: {exc}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:
-        if args.cmd not in ("setup", "demo"):
+        if args.cmd not in (None, "menu", "setup", "demo"):
             raise
+        if args.cmd in (None, "menu"):
+            print("Menu closed. Saved keys and completed changes remain in place.", file=sys.stderr)
+            return 130
         print("Cancelled. Any saved approval-key backup remains available; no further changes will be made.",
               file=sys.stderr)
         return 130
     except (OSError, ValueError, EOFError, SignError) as exc:
-        if args.cmd not in ("setup", "demo"):
+        if args.cmd not in (None, "menu", "setup", "demo"):
             raise
-        print(f"Setup could not finish: {exc or 'Input ended before setup was confirmed.'}", file=sys.stderr)
+        if args.cmd in (None, "menu"):
+            print(f"Menu ended: {str(exc) or 'Input ended. Saved keys and completed changes remain in place.'}", file=sys.stderr)
+        else:
+            print(f"Setup could not finish: {exc or 'Input ended before setup was confirmed.'}", file=sys.stderr)
         return 2
 
 

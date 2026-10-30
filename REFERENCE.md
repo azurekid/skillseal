@@ -391,7 +391,26 @@ skillseal reuses OMS and adds the missing parts: a trust policy, stricter verifi
 
 ### Command reference
 
+Run `skillseal` without arguments, or `skillseal menu`, in an interactive
+terminal for the numbered menu. It wraps the existing checks, setup and
+enforcement flows and adds guided local scanning/signing. Existing commands
+remain noninteractive unless they already have a setup confirmation.
+
+Personal-key setup asks for permission before generating an EC P-256 key
+outside the project, adding its public key to the user policy and installing
+hooks. These are separate confirmations. Existing policies are backed up and
+keep their mode, signers and revocations; new policies start in audit mode.
+It refuses managed system policies and `require_ca_issued` policies.
+
+Local signing requires confirmation before scanning (a failed/rejected scan
+removes prior approval) and again before replacing a signature. HIGH/CRITICAL
+findings block signing. The menu verifies each new signature against the
+effective policy and explicitly reports when a signed skill is still untrusted.
+It never automatically trusts an existing key or certificate. Menu actions
+report failures and return to the menu; Ctrl+C exits and EOF ends input.
+
 ```text
+skillseal [menu]                       # interactive terminal only
 skillseal demo                         # isolated embedded signature demonstration
 skillseal setup      [--bundle TEAM.zip] [--agent NAME] [--project DIR] [--yes]
 skillseal setup organization [--name NAME] [--repository OWNER/REPO] [--branch main]

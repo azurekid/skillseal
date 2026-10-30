@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.6
+
+- Add a guided terminal menu (`skillseal` or `skillseal menu`) for checks,
+  protection setup, enforcement, demonstration, and local scanning/signing.
+- Add explicitly confirmed personal-key creation outside the project, preserving
+  existing trust policies and respecting managed/CA-issued-only restrictions.
+
 ## 0.4.5
 
 - Add optional `require_ca_issued` policy and `init --require-ca-issued`:

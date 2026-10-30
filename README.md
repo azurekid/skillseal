@@ -27,6 +27,11 @@ You'll see an approved skill pass, an edited skill fail, and an unsigned skill
 fail. The examples are already signed. No keys to create, no GitHub setup,
 and no changes to your agent or trust settings.
 
+Prefer a menu? Run **`skillseal`** in a terminal (or `skillseal menu`) for guided
+checks, protection setup, local signing, and enforcement. You can create a
+personal signing key without GitHub; existing trust restrictions still apply.
+See [local signing](GETTING-STARTED.md#local-signing-without-github).
+
 **[Try it on your own projects →](GETTING-STARTED.md#set-up-my-own-skills)**
 
 ## Keep the skills. Add an approval check.
