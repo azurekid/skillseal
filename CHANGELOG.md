@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.5
+
+- Add optional `require_ca_issued` policy and `init --require-ca-issued`:
+  reject raw-key signatures, self-issued signing certificates and CA signing
+  certificates while retaining configured CA roots and Sigstore verification.
+
 ## 0.4.4
 
 - Add `skillseal run` to verify discovered skills before starting an agent

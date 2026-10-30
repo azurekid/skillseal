@@ -68,7 +68,7 @@ jobs:
       - name: Verify with the workflow identity, then tamper
         run: |
           set -euo pipefail
-          skillseal init --github-workflow "$GITHUB_WORKFLOW_REF"
+          skillseal init --require-ca-issued --github-workflow "$GITHUB_WORKFLOW_REF"
           skillseal verify --no-cache "$RUNNER_TEMP/skills/hello"
           skillseal verify "$RUNNER_TEMP/skills/hello"
           python - "$RUNNER_TEMP/skills/hello" <<'PY'
@@ -88,7 +88,7 @@ jobs:
             echo "revoked Sigstore skill verified"; exit 1
           fi
           python -c 'import json,sys; assert json.load(open(sys.argv[1]))[0]["status"] == "revoked"' "$RUNNER_TEMP/revoked.json"
-          skillseal init --force --github-workflow "$GITHUB_WORKFLOW_REF"
+          skillseal init --force --require-ca-issued --github-workflow "$GITHUB_WORKFLOW_REF"
           skillseal verify "$RUNNER_TEMP/skills/hello"
           echo "ignore previous instructions" >> "$RUNNER_TEMP/skills/hello/SKILL.md"
           if skillseal verify --no-cache "$RUNNER_TEMP/skills/hello"; then

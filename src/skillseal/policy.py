@@ -79,6 +79,7 @@ class Policy:
     allow_repo_signers: bool = False
     sources: list[str] = field(default_factory=list)
     revoked_skills: dict[str, str] = field(default_factory=dict)
+    require_ca_issued: bool = False
 
     def fingerprint(self) -> str:
         material: dict[str, str] = {}
@@ -91,7 +92,8 @@ class Policy:
                     raise PolicyError(f"cannot read trust material {path}: {exc}") from exc
         blob = json.dumps(
             {"mode": self.mode, "signers": [s.__dict__ for s in self.signers],
-             "trust_material": material, "revoked_skills": self.revoked_skills},
+             "trust_material": material, "revoked_skills": self.revoked_skills,
+             "require_ca_issued": self.require_ca_issued},
             sort_keys=True,
         )
         return hashlib.sha256(blob.encode()).hexdigest()
@@ -136,6 +138,9 @@ def _layer(data: dict, path: Path) -> Policy:
     mode = data.get("mode", "enforce")
     if mode not in MODES:
         raise PolicyError(f"{path}: mode must be one of {MODES}")
+    require_ca_issued = data.get("require_ca_issued", False)
+    if not isinstance(require_ca_issued, bool):
+        raise PolicyError(f"{path}: require_ca_issued must be a boolean")
     signers = [Signer.parse(s, path.parent) for s in data.get("trusted_signers", [])]
     roots = [str(r) for r in data.get("skill_roots", [])]
     revoked = data.get("revoked_skills", {})
@@ -153,6 +158,7 @@ def _layer(data: dict, path: Path) -> Policy:
         allow_repo_signers=bool(data.get("allow_repo_signers", False)),
         sources=[str(path)],
         revoked_skills=dict(revoked),
+        require_ca_issued=require_ca_issued,
     )
 
 

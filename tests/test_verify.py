@@ -2,8 +2,13 @@ import json
 import os
 import shutil
 import sys
+from datetime import datetime, timedelta, timezone
 
 import pytest
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
 from conftest import make_key, make_skill, write_policy
 from skillseal import cache
@@ -24,6 +29,82 @@ def test_clean_skill_verifies(tmp_path, keys):
     skill, policy = signed_skill(tmp_path, keys)
     r = verify_skill(skill, policy, use_cache=False)
     assert r.status == VERIFIED and r.signer == "test key"
+
+
+def test_ca_requirement_rejects_cached_raw_key(tmp_path, keys):
+    skill, policy = signed_skill(tmp_path, keys)
+    assert verify_skill(skill, policy).ok
+    before = policy.fingerprint()
+    policy.require_ca_issued = True
+    assert policy.fingerprint() != before
+    result = verify_skill(skill, policy)
+    assert result.status == INVALID
+    assert "rejects raw public-key" in result.reasons[0]
+
+
+@pytest.mark.parametrize("self_issued,is_ca,allowed", [
+    (False, False, True),
+    (True, False, False),
+    (True, True, False),
+    (False, True, False),
+])
+def test_ca_requirement_checks_signing_certificate(tmp_path, self_issued, is_ca, allowed):
+    now = datetime.now(timezone.utc)
+    root_key = ec.generate_private_key(ec.SECP256R1())
+    leaf_key = ec.generate_private_key(ec.SECP256R1())
+    root_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Test CA")])
+    leaf_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Test publisher")])
+    root = (
+        x509.CertificateBuilder().subject_name(root_name).issuer_name(root_name)
+        .public_key(root_key.public_key()).serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=1))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(root_key, hashes.SHA256())
+    )
+    leaf = (
+        x509.CertificateBuilder().subject_name(leaf_name)
+        .issuer_name(leaf_name if self_issued else root_name)
+        .public_key(leaf_key.public_key()).serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=1)).not_valid_after(now + timedelta(hours=1))
+        .add_extension(x509.BasicConstraints(ca=is_ca, path_length=None), critical=True)
+        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.CODE_SIGNING]), critical=False)
+        .sign(leaf_key if self_issued else root_key, hashes.SHA256())
+    )
+    private, certificate, chain = tmp_path / "key.pem", tmp_path / "leaf.pem", tmp_path / "ca.pem"
+    private.write_bytes(leaf_key.private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption(),
+    ))
+    certificate.write_bytes(leaf.public_bytes(serialization.Encoding.PEM))
+    chain.write_bytes((leaf if self_issued else root).public_bytes(serialization.Encoding.PEM))
+    skill = make_skill(tmp_path / "skills")
+    sign_skill(skill, method="certificate", private_key=private,
+               signing_certificate=certificate, certificate_chain=[chain])
+    path = write_policy(tmp_path / "policy.json", None, trusted_signers=[
+        {"name": "CA", "type": "certificate", "certificate_chain": [str(chain)]},
+    ])
+    policy = load_policy(explicit=path)
+    assert verify_skill(skill, policy).ok
+    policy.require_ca_issued = True
+    result = verify_skill(skill, policy)
+    assert result.ok is allowed
+    if not allowed:
+        assert "require_ca_issued rejects" in result.reasons[0]
+    else:
+        assert verify_skill(skill, policy).ok
+        replacement_key = ec.generate_private_key(ec.SECP256R1())
+        replacement = (
+            x509.CertificateBuilder().subject_name(root_name).issuer_name(root_name)
+            .public_key(replacement_key.public_key()).serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=1))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+            .sign(replacement_key, hashes.SHA256())
+        )
+        chain.write_bytes(replacement.public_bytes(serialization.Encoding.PEM))
+        assert not verify_skill(skill, policy).ok
+        chain.write_bytes(root.public_bytes(serialization.Encoding.PEM))
+        assert verify_skill(skill, policy).ok
+        (skill / "SKILL.md").write_text("tampered")
+        assert not verify_skill(skill, policy).ok
 
 
 def test_unsigned(tmp_path, keys):

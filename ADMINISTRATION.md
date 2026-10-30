@@ -106,6 +106,11 @@ or isolation from malicious runner code.
 
 Obtain an EC signing certificate and matching private key from your PKI.
 Use a dedicated approval CA, not the complete OS certificate store.
+To require CA-issued leaves or Sigstore and disallow raw keys and self-issued
+signing certificates, enable
+[`require_ca_issued`](REFERENCE.md#optional-ca-issued-certificate-requirement)
+in the authoritative policy. Self-signed root CAs remain valid trust anchors;
+the signing leaf must be a non-CA certificate with a different subject and issuer.
 Change the caller's settings to:
 
 ```yaml

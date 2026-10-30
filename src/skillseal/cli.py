@@ -44,6 +44,8 @@ def _print_check(results: list[Result], policy: Policy, agents: list[str]) -> No
     print(f"  Policy:   {', '.join(_display_path(p) for p in policy.sources) or 'Not configured'}")
     print(f"  Signers:  {len(policy.signers)} trusted")
     print(f"  Agents:   {', '.join(agents)}")
+    if policy.require_ca_issued:
+        print("  Trust:    CA-issued signing certificates or Sigstore required; raw keys rejected")
     print()
     if policy.signers:
         print("Trusted signers")
@@ -122,6 +124,8 @@ def cmd_init(a) -> int:
             signers.append(signer)
     elif a.reusable_workflow:
         raise PolicyError("--reusable-workflow requires --github-workflow to restrict the caller")
+    if a.require_ca_issued and a.public_key:
+        raise PolicyError("--require-ca-issued cannot authorize --public-key; use --certificate-chain or Sigstore")
     for identity in a.identity or []:
         signers.append({"name": "sigstore identity", "type": "sigstore", "identity": identity, "issuer": a.issuer})
     if a.public_key:
@@ -129,6 +133,8 @@ def cmd_init(a) -> int:
     if a.certificate_chain:
         signers.append({"name": "certificate", "type": "certificate", "certificate_chain": [str(Path(c).resolve()) for c in a.certificate_chain]})
     policy = {"mode": a.mode, "trusted_signers": signers}
+    if a.require_ca_issued:
+        policy["require_ca_issued"] = True
     if a.scope == "user":
         policy["allow_repo_signers"] = False
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -376,6 +382,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--identity", action="append", help="trust this Sigstore certificate identity (needs --issuer); repeat for more")
     s.add_argument("--issuer", default=GITHUB_ISSUER)
     s.add_argument("--public-key", help="trust an EC public key (PEM)")
+    s.add_argument("--require-ca-issued", action="store_true",
+                   help="require CA-issued signing certificates or Sigstore; reject raw keys and self-issued leaf certificates")
     s.add_argument("--certificate-chain", nargs="+", help="trust a certificate chain, for example nv-agent-root-cert.pem")
     s.add_argument("--force", action="store_true")
     s.set_defaults(func=cmd_init)

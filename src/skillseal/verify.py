@@ -143,6 +143,30 @@ def _crypto_verify(skill: Path, sig: Path, signer: Signer, ser: dict) -> None:
         OIDCBuildConfigURI(signer.github_workflow).verify(bundle.signing_certificate)
 
 
+def _require_ca_issued(sig: Path, signer: Signer) -> None:
+    if signer.type == "sigstore":
+        return
+    if signer.type != "certificate":
+        raise ValueError("require_ca_issued rejects raw public-key signatures")
+
+    from cryptography import x509
+
+    try:
+        bundle = json.loads(sig.read_bytes())
+        certificates = bundle["verificationMaterial"]["x509CertificateChain"]["certificates"]
+        leaf = x509.load_der_x509_certificate(base64.b64decode(certificates[0]["rawBytes"], validate=True))
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        raise ValueError("require_ca_issued needs a signing certificate in the OMS bundle") from exc
+    if leaf.subject == leaf.issuer:
+        raise ValueError("require_ca_issued rejects self-issued signing certificates")
+    try:
+        constraints = leaf.extensions.get_extension_for_class(x509.BasicConstraints).value
+    except x509.ExtensionNotFound:
+        raise ValueError("require_ca_issued needs a non-CA signing certificate with BasicConstraints") from None
+    if constraints.ca:
+        raise ValueError("require_ca_issued rejects CA certificates used as signing certificates")
+
+
 def _short_error(exc: Exception) -> str:
     text = str(exc)
     changed = re.findall(r"Hash mismatch for \\?'([^'\\]+)\\?'", text)
@@ -221,6 +245,8 @@ def verify_skill(skill_dir: Path, policy: Policy, use_cache: bool = True) -> Res
     errors: list[str] = []
     for signer in policy.signers:
         try:
+            if policy.require_ca_issued:
+                _require_ca_issued(sig, signer)
             _crypto_verify(real, sig, signer, ser)
         except Exception as exc:  # noqa: BLE001 - every failure means "not this signer"
             errors.append(f"{signer.name}: {_short_error(exc)}")

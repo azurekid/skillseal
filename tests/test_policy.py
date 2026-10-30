@@ -82,3 +82,26 @@ def test_revocation_changes_policy_fingerprint(tmp_path, keys):
     before = policy.fingerprint()
     policy.revoked_skills["a" * 64] = "incident"
     assert before != policy.fingerprint()
+
+
+@pytest.mark.parametrize("value", ["false", 1, None, []])
+def test_ca_requirement_requires_boolean(tmp_path, value):
+    path = write_policy(tmp_path / "policy.json", None, require_ca_issued=value)
+    with pytest.raises(PolicyError, match="require_ca_issued"):
+        load_policy(explicit=path)
+
+
+def test_repo_cannot_relax_ca_requirement(tmp_path, keys, isolated_env):
+    write_policy(isolated_env / ".config/skillseal/policy.json", keys[1],
+                 require_ca_issued=True, allow_repo_signers=True)
+    write_policy(tmp_path / ".skillseal/policy.json", keys[1], require_ca_issued=False)
+    assert load_policy(project=tmp_path).require_ca_issued is True
+
+
+def test_system_ca_requirement_overrides_user(tmp_path, keys, isolated_env, monkeypatch):
+    from skillseal import policy as policy_mod
+
+    path = write_policy(tmp_path / "system.json", keys[1], require_ca_issued=True)
+    monkeypatch.setattr(policy_mod, "system_policy_path", lambda: path)
+    write_policy(isolated_env / ".config/skillseal/policy.json", keys[1], require_ca_issued=False)
+    assert load_policy(project=tmp_path).require_ca_issued is True

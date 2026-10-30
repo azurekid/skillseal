@@ -35,6 +35,20 @@ def test_init_sign_check_roundtrip(tmp_path, keys, isolated_env, monkeypatch, ca
     assert json.loads(capsys.readouterr().out)[0]["status"] == "verified"
 
 
+def test_init_ca_requirement(isolated_env, tmp_path, capsys):
+    assert main(["init", "--require-ca-issued", "--certificate-chain", str(tmp_path / "ca.pem")]) == 0
+    policy = json.loads((isolated_env / ".config/skillseal/policy.json").read_text())
+    assert policy["require_ca_issued"] is True
+    assert main(["check", "--cwd", str(tmp_path)]) == 0
+    assert "CA-issued signing certificates or Sigstore required" in capsys.readouterr().out
+
+
+def test_init_ca_requirement_rejects_raw_key(keys, isolated_env, capsys):
+    assert main(["init", "--require-ca-issued", "--public-key", str(keys[1])]) == 2
+    assert "cannot authorize --public-key" in capsys.readouterr().err
+    assert not (isolated_env / ".config/skillseal/policy.json").exists()
+
+
 def test_run_blocks_before_starting_agent_when_skill_is_unapproved(tmp_path, keys, isolated_env):
     proj = tmp_path / "proj"
     (proj / ".git").mkdir(parents=True)
