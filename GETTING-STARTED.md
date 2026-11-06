@@ -118,13 +118,15 @@ stdin or stdout is redirected.
 2. Review and confirm the key location, trust change, and hook installation.
    The private key stays outside the project. A new policy starts in audit
    mode; an existing policy keeps its mode, signers and revocations.
-3. Choose **Scan and sign a local skill**. Supply the entire folder containing
-   `SKILL.md`. Select the existing-key option and the private-key path printed
-   during setup (or create a key here if you skipped step 1).
-4. Review the files and confirm signing. The menu runs the local heuristic
-   scanner, blocks HIGH/CRITICAL findings, and verifies the result against your
-   policy. On a rejected or failed scan, the previous approval signature is
-   removed; the menu asks for permission before starting this scan.
+3. Choose **Scan and sign a local skill**. Skillseal discovers skill folders
+   in the project and any additional configured skill roots; select the folder
+   you want to review and approve. The local heuristic scan runs automatically
+   and blocks HIGH/CRITICAL findings.
+4. Choose the existing-key option. If a private key matching a trusted public
+   key is found beside it, Skillseal uses that key automatically; otherwise,
+   enter the private-key path. Review the files and confirm signing. The menu
+   verifies the result against your policy. On a rejected or failed scan, the
+   previous approval signature is removed.
 5. Restart your agent, choose **Check my skills and trust policy**, then
    **Enable enforcement** when ready. Test the agent's blocking behavior below.
 

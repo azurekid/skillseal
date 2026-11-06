@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 import uuid
 from pathlib import Path
 
 from . import __version__, policy as policies
 from .cli import _default_exe, _print_result, main
-from .discover import project_chain
+from .discover import AGENTS, discover, project_chain
 from .scan import ScanError, scan_exceeds_threshold, scan_skill
 from .setup import SETUP_AGENTS, SetupError, _answer, _apply, _confirm, _hook_plan, _json, approval_policy
 from .sign import SignError, remove_signature, sign_skill
@@ -50,6 +51,62 @@ def _project() -> Path:
     if not path.is_dir():
         raise SetupError(f"Project folder does not exist: {path}")
     return path
+
+
+def _project_skills(project: Path, policy: policies.Policy) -> list[Path]:
+    repo = project_chain(project)[-1]
+    roots = [repo]
+    for raw in policy.skill_roots:
+        root = Path(raw).expanduser()
+        roots.append(root if root.is_absolute() else project / root)
+    skills = discover(list(AGENTS), project, policy.skill_roots)
+    return sorted(
+        (
+            skill
+            for skill in skills
+            if any(
+                Path(os.path.abspath(skill)).is_relative_to(Path(os.path.abspath(root)))
+                for root in roots
+            )
+        ),
+        key=lambda skill: str(skill).casefold(),
+    )
+
+
+def _existing_private_keys(policy: policies.Policy) -> list[tuple[str, Path]]:
+    from cryptography.hazmat.primitives import serialization
+
+    matches: list[tuple[str, Path]] = []
+    for signer in policy.signers:
+        if signer.type != "public_key":
+            continue
+        public_path = Path(signer.public_key)
+        candidates = {
+            public_path.with_suffix(".pem"),
+            public_path.with_name(f"{public_path.stem}-private.pem"),
+            public_path.with_name("approval-private.pem"),
+        }
+        try:
+            trusted_public = serialization.load_pem_public_key(public_path.read_bytes())
+        except (OSError, ValueError):
+            continue
+        trusted_bytes = trusted_public.public_bytes(
+            serialization.Encoding.DER,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        for candidate in sorted(candidates):
+            try:
+                private_key = serialization.load_pem_private_key(candidate.read_bytes(), password=None)
+            except (OSError, ValueError, TypeError):
+                continue
+            private_bytes = private_key.public_key().public_bytes(
+                serialization.Encoding.DER,
+                serialization.PublicFormat.SubjectPublicKeyInfo,
+            )
+            if private_bytes == trusted_bytes:
+                matches.append((signer.name, candidate.resolve()))
+                break
+    return matches
 
 
 def _personal_key(project: Path, skill: Path | None = None) -> Path:
@@ -132,10 +189,15 @@ def _protect() -> int:
 def _sign_local() -> int:
     project = _project()
     policy = policies.load_policy(project=project)
-    skill = _path("Skill folder containing SKILL.md")
+    skills = _project_skills(project, policy)
+    if not skills:
+        raise SetupError(f"No skills found in {project}. Add or open a skill folder containing SKILL.md, then retry.")
+    selected = _choose("Discovered skills", tuple(str(skill) for skill in skills))
+    if not selected:
+        return 0
+    skill = skills[selected - 1]
+    print(f"\nScanning {skill}. No files are uploaded or skill scripts executed.")
     print("A rejected or failed scan removes any existing approval signature.")
-    _confirm("Scan this skill before approval?", False)
-    print("Scanning locally. No files are uploaded or skill scripts executed.")
     try:
         findings = scan_skill(skill)
     except ScanError:
@@ -160,8 +222,24 @@ def _sign_local() -> int:
     method = {1: "key", 2: "certificate", 3: "key", 4: "sigstore"}[choice]
     private = certificate = None
     chain = None
-    if choice in (1, 2):
+    if choice == 1:
+        matches = _existing_private_keys(policy)
+        if len(matches) == 1:
+            signer_name, private = matches[0]
+            print(f"Using the matching private key for trusted signer {signer_name}: {private}")
+        elif len(matches) > 1:
+            selected = _choose(
+                "Matching trusted private keys",
+                tuple(f"{name}: {path}" for name, path in matches),
+            )
+            if not selected:
+                return 0
+            _, private = matches[selected - 1]
+        else:
+            private = _path("Private-key PEM path (not its contents)")
+    elif choice == 2:
         private = _path("Private-key PEM path (not its contents)")
+    if private is not None:
         if private.is_relative_to(project_chain(project)[-1]) or private.is_relative_to(skill):
             raise SetupError("Move the private key outside the project and skill folder before signing.")
     if choice == 2:
