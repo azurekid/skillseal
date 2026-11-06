@@ -36,6 +36,8 @@ def test_uploads_exact_skill_contents_without_signature_or_git(tmp_path, monkeyp
     (skill / "skill.oms.sig").write_text("old approval")
     (skill / ".git").mkdir()
     (skill / ".git/config").write_text("not submitted")
+    (skill / ".GIT").mkdir()
+    (skill / ".GIT/config").write_text("also not submitted")
     script = skill / "scripts" / "hello.py"
     script.write_text("print('hello')\n")
     report = report_for(skill)
