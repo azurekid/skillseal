@@ -31,13 +31,12 @@ def mock_report(monkeypatch, report):
     monkeypatch.setattr(agentlens, "urlopen", lambda *args, **kwargs: io.BytesIO(json.dumps(report).encode()))
 
 
-def test_uploads_exact_skill_contents_without_signature_or_git(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("git_dir", [".git", ".GIT"])
+def test_uploads_exact_skill_contents_without_signature_or_git(tmp_path, monkeypatch, capsys, git_dir):
     skill = make_skill(tmp_path)
     (skill / "skill.oms.sig").write_text("old approval")
-    (skill / ".git").mkdir()
-    (skill / ".git/config").write_text("not submitted")
-    (skill / ".GIT").mkdir()
-    (skill / ".GIT/config").write_text("also not submitted")
+    (skill / git_dir).mkdir()
+    (skill / git_dir / "config").write_text("not submitted")
     script = skill / "scripts" / "hello.py"
     script.write_text("print('hello')\n")
     report = report_for(skill)
