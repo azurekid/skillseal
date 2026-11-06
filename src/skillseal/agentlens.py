@@ -24,10 +24,11 @@ def scan_agentlens(skill_dir: Path, url: str) -> list[Finding]:
         raise ScanError(f"{skill_dir} has no {SKILL_FILE}")
 
     paths, problems = _walk(skill_dir)
+    problems = [problem for problem in problems if not problem.startswith("git metadata not allowed: ")]
     if problems:
         raise ScanError("; ".join(problems))
     paths = sorted(path for path in paths if Path(path).name != SIGNATURE_FILE
-                   and ".git" not in Path(path).parts)
+                   and not any(part.lower() == ".git" for part in Path(path).parts))
     if not paths or len(paths) > 500:
         raise ScanError("AgentLens requires between 1 and 500 files per skill")
 
