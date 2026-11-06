@@ -1,11 +1,12 @@
 # Changelog
 
-## Unreleased
+## 0.4.7
 
 - Reject `.git` directories and pointer files inside skills during signing and
   verification, including nested and case-variant entries. Previously ignored
   Git metadata could change without invalidating approval. Rejection happens
   before cache lookup; parent repository metadata remains unaffected.
+- Skip Git metadata during AgentLens scans.
 
 ## 0.4.6
 
